@@ -19,7 +19,7 @@ fn main() {
 		renderer: unsafe { nil }
 	}
 	app.ctx = gg.new_context(
-		bg_color: gg.Color{255, 255, 255, 255}
+		bg_color: gg.gray
 		width: 800
 		height: 600
 		create_window: true
@@ -33,8 +33,8 @@ fn main() {
 
 fn init(mut app App) {
 	app.tr_ctx = text_render.new_context() or { panic(err) }
-	
-	// Define fonts to try. 
+
+	// Define fonts to try.
 	// Please ensure these exist or change logic to pick available fonts.
 	// Using downloaded Noto fonts
 	wd := os.getwd()
@@ -45,16 +45,16 @@ fn init(mut app App) {
 	} else {
 		wd
 	}
-	
+
 	fonts := [
 		FontDef{'arial', os.join_path(base_path, 'assets/fonts/NotoSans-Regular.ttf')},
 		FontDef{'arabic', os.join_path(base_path, 'assets/fonts/NotoSansArabic-Regular.ttf')},
 		FontDef{'japanese', os.join_path(base_path, 'assets/fonts/NotoSansCJKjp-Regular.otf')},
 		FontDef{'emoji', os.join_path(base_path, 'assets/fonts/NotoColorEmoji.ttf')},
 	]
-	
+
 	mut loaded_names := []string{}
-	
+
 	for f in fonts {
 		if os.exists(f.path) {
 			println('Loading $f.name from $f.path')
@@ -68,12 +68,13 @@ fn init(mut app App) {
 			println('Font not found: $f.path')
 		}
 	}
-	
-	text := "Hello السلام Verden 🌍" 
-	
+
+	text := "Hello السلام Verden 🌍9局て脂済事つまきな政98院"
+
 	app.layout = app.tr_ctx.layout_text(text, loaded_names)
-	
+
 	app.renderer = text_render.new_renderer(app.ctx)
+
 }
 
 struct FontDef {
@@ -83,12 +84,10 @@ struct FontDef {
 
 fn frame(mut app App) {
 	app.ctx.begin()
-	// Debug: Simple rectangle to prove drawing works
-	app.ctx.draw_rect_filled(10, 10, 100, 100, gg.Color{0, 0, 255, 255})
-	
+
 	// Check if renderer is initialized
 	if unsafe { app.renderer != 0 } {
-		app.renderer.draw_layout(app.layout, 50, 300)
+		app.renderer.draw_layout(app.layout, 10, 50)
 	}
 	app.ctx.end()
 }
