@@ -16,5 +16,8 @@ curl -L -o assets/fonts/NotoSansCJKjp-Regular.otf https://raw.githubusercontent.
 echo "Downloading Noto Sans Symbols 2..."
 curl -L -o assets/fonts/NotoSansSymbols2-Regular.ttf https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansSymbols2/NotoSansSymbols2-Regular.ttf
 
+echo "Downloading Noto Color Emoji..."
+curl -L -o assets/fonts/NotoColorEmoji.ttf https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/NotoColorEmoji.ttf
+
 echo "Fonts downloaded to assets/fonts/"
 ls -l assets/fonts/
