@@ -13,8 +13,8 @@ echo "Downloading Noto Sans JP (Static)..."
 # Using OTF static version for CJK
 curl -L -o assets/fonts/NotoSansCJKjp-Regular.otf https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf
 
-echo "Downloading Noto Color Emoji..."
-curl -L -o assets/fonts/NotoColorEmoji.ttf https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/NotoColorEmoji.ttf
+echo "Downloading Noto Sans Symbols 2..."
+curl -L -o assets/fonts/NotoSansSymbols2-Regular.ttf https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansSymbols2/NotoSansSymbols2-Regular.ttf
 
 echo "Fonts downloaded to assets/fonts/"
 ls -l assets/fonts/

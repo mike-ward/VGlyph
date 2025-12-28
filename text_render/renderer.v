@@ -85,29 +85,28 @@ pub fn (mut r Renderer) draw_layout(layout Layout, x f32, y f32) {
 
 // Load a glyph, render to bitmap, insert into atlas, and return UVs
 fn (mut r Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
-	if C.FT_Load_Glyph(font.ft_face, index, 0) != 0 {
-		return CachedGlyph{}
+	// Load glyph outline or bitmap
+	if C.FT_Load_Glyph(font.ft_face, index, C.FT_LOAD_COLOR) != 0 {
+		return error('FT_Load_Glyph failed')
 	}
 
-	if font.ft_face.glyph.bitmap.width == 0 || font.ft_face.glyph.bitmap.rows == 0 {
-		// No bitmap, but still a valid glyph (space, tabs, etc.)
+	// Only render grayscale glyphs
+	if font.ft_face.glyph.bitmap.buffer == 0 {
+		// Not rendered yet → render it
+		C.FT_Render_Glyph(font.ft_face.glyph, C.ft_render_mode_normal)
+	}
+
+	// Still no bitmap? (space, zero-width, etc.)
+	if font.ft_face.glyph.bitmap.buffer == 0 {
 		return CachedGlyph{
-			u0:   0
-			v0:   0
-			u1:   0
-			v1:   0
 			left: int(font.ft_face.glyph.bitmap_left)
 			top:  int(font.ft_face.glyph.bitmap_top)
 		}
 	}
 
-	C.FT_Render_Glyph(font.ft_face.glyph, C.ft_render_mode_normal)
-
-	bitmap := font.ft_face.glyph.bitmap
-	ft_bmp := ft_bitmap_to_bitmap(&bitmap)!
-
-	cached := r.atlas.insert_bitmap(ft_bmp, int(font.ft_face.glyph.bitmap_left), int(font.ft_face.glyph.bitmap_top))
-	return cached
+	// Convert bitmap to RGBA
+	ftbmp := ft_bitmap_to_bitmap(&font.ft_face.glyph.bitmap)!
+	return r.atlas.insert_bitmap(ftbmp, int(font.ft_face.glyph.bitmap_left), int(font.ft_face.glyph.bitmap_top))
 }
 
 // Convert FreeType FT_Bitmap → RGBA bitmap
@@ -157,6 +156,19 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap) !Bitmap {
 					data[i + 1] = val
 					data[i + 2] = val
 					data[i + 3] = 255
+				}
+			}
+		}
+		u8(C.FT_PIXEL_MODE_BGRA) {
+			for y in 0 .. height {
+				row := unsafe { bmp.buffer + y * bmp.pitch }
+				for x in 0 .. width {
+					src := unsafe { row + x * 4 }
+					i := (y * width + x) * 4
+					data[i + 0] = unsafe { src[2] } // R
+					data[i + 1] = unsafe { src[1] } // G
+					data[i + 2] = unsafe { src[0] } // B
+					data[i + 3] = unsafe { src[3] } // A
 				}
 			}
 		}

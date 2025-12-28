@@ -55,7 +55,7 @@ fn init(mut app App) {
 		FontDef{'arial', os.join_path(base_path, 'assets/fonts/NotoSans-Regular.ttf')},
 		FontDef{'arabic', os.join_path(base_path, 'assets/fonts/NotoSansArabic-Regular.ttf')},
 		FontDef{'japanese', os.join_path(base_path, 'assets/fonts/NotoSansCJKjp-Regular.otf')},
-		FontDef{'emoji', os.join_path(base_path, 'assets/fonts/NotoColorEmoji.ttf')},
+		FontDef{'emoji', os.join_path(base_path, 'assets/fonts/NotoSansSymbols2-Regular.ttf')},
 	]
 
 	mut loaded_names := []string{}
