@@ -123,7 +123,7 @@ fn (mut r Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
 		return CachedGlyph{} // space or empty glyph
 	}
 
-	bitmap := ft_bitmap_to_bitmap(&bmp)!
+	bitmap := ft_bitmap_to_bitmap(&bmp, font)!
 
 	if bmp.pixel_mode == C.FT_PIXEL_MODE_BGRA {
 		return r.atlas.insert_bitmap(bitmap, 0, bitmap.height)
@@ -131,7 +131,7 @@ fn (mut r Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
 	return r.atlas.insert_bitmap(bitmap, int(font.ft_face.glyph.bitmap_left), int(font.ft_face.glyph.bitmap_top))
 }
 
-pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap) !Bitmap {
+pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, font &Font) !Bitmap {
 	if bmp.buffer == 0 || bmp.width == 0 || bmp.rows == 0 {
 		return error('Empty bitmap')
 	}
@@ -186,7 +186,13 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap) !Bitmap {
 		}
 		u8(C.FT_PIXEL_MODE_BGRA) {
 			for y in 0 .. height {
-				row := unsafe { bmp.buffer + y * bmp.pitch }
+				row := unsafe {
+					if bmp.pitch >= 0 {
+						bmp.buffer + y * bmp.pitch
+					} else {
+						bmp.buffer + (height - 1 - y) * (-bmp.pitch)
+					}
+				}
 				for x in 0 .. width {
 					src := unsafe { row + x * 4 }
 					i := (y * width + x) * 4
@@ -196,8 +202,9 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap) !Bitmap {
 					data[i + 3] = unsafe { src[3] } // A
 				}
 			}
-			if bmp.pixel_mode == C.FT_PIXEL_MODE_BGRA {
-				scale := f32(30) / f32(height)
+			needs_scaling := bmp.rows != font.size
+			if needs_scaling {
+				scale := f32(font.size) / f32(height)
 				new_w := int(f32(width) * scale)
 				new_h := int(f32(height) * scale)
 

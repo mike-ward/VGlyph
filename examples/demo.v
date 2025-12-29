@@ -56,7 +56,7 @@ fn init(mut app App) {
 		FontDef{'arial', os.join_path(base_path, 'assets/fonts/NotoSans-Regular.ttf'), 30},
 		FontDef{'arabic', os.join_path(base_path, 'assets/fonts/NotoSansArabic-Regular.ttf'), 30},
 		FontDef{'japanese', os.join_path(base_path, 'assets/fonts/NotoSansCJKjp-Regular.otf'), 30},
-		FontDef{'emoji-color', os.join_path(base_path, 'assets/fonts/NotoColorEmoji.ttf'), 30},
+		FontDef{'emoji-color', os.join_path(base_path, 'assets/fonts/NotoColorEmoji.ttf'), 25},
 		FontDef{'emoji', os.join_path(base_path, 'assets/fonts/NotoSansSymbols2-Regular.ttf'), 30},
 	]
 
@@ -77,7 +77,6 @@ fn init(mut app App) {
 
 	text := 'Hello السلام Verden 🌍9局て脂済事つまきな政98院'
 	app.layout = app.tr_ctx.layout_text(text, loaded_names)
-
 	app.renderer = text_render.new_renderer(mut app.ctx)
 }
 
@@ -85,7 +84,6 @@ fn frame(mut app App) {
 	app.ctx.begin()
 
 	if unsafe { app.renderer != 0 } {
-		// Draw the layout at x=10, y=75
 		app.renderer.draw_layout(app.layout, 10, 75)
 	}
 
