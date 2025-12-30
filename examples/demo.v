@@ -1,7 +1,6 @@
 module main
 
 import gg
-import os
 import text_render
 
 struct App {
@@ -10,12 +9,6 @@ mut:
 	tr_ctx   &text_render.Context
 	renderer &text_render.Renderer
 	layout   text_render.Layout
-}
-
-struct FontDef {
-	name string
-	path string
-	size int
 }
 
 fn main() {
@@ -43,41 +36,14 @@ fn main() {
 fn init(mut app App) {
 	app.tr_ctx = text_render.new_context() or { panic(err) }
 
-	// Locate fonts
-	wd := os.getwd()
-	base_path := if os.exists(os.join_path(wd, 'assets/fonts')) {
-		wd
-	} else if os.exists(os.join_path(wd, '../assets/fonts')) {
-		os.join_path(wd, '..')
-	} else {
-		wd
-	}
+	// Text containing Latin, Arabic, CJK, and Emojis
+	text := 'Hello السلام Verden 🌍 9局て脂済事つまきな政98院'
 
-	fonts := [
-		FontDef{'arial', os.join_path(base_path, 'assets/fonts/NotoSans-Regular.ttf'), 30},
-		FontDef{'arabic', os.join_path(base_path, 'assets/fonts/NotoSansArabic-Regular.ttf'), 30},
-		FontDef{'japanese', os.join_path(base_path, 'assets/fonts/NotoSansCJKjp-Regular.otf'), 30},
-		FontDef{'emoji-color', os.join_path(base_path, 'assets/fonts/NotoColorEmoji.ttf'), 25},
-		FontDef{'emoji', os.join_path(base_path, 'assets/fonts/NotoSansSymbols2-Regular.ttf'), 30},
-	]
+	// Pango handles font fallback automatically.
+	// We just ask for a base font and size.
+	// Ensure you have fonts installed that cover these scripts (e.g. Noto Sans).
+	app.layout = app.tr_ctx.layout_text(text, 'Sans 30') or { panic(err.msg()) }
 
-	mut loaded_names := []string{}
-
-	for f in fonts {
-		if os.exists(f.path) {
-			println('Loading ${f.name} from ${f.path}')
-			app.tr_ctx.load_font(f.name, f.path, f.size) or {
-				println('Failed to load ${f.name}')
-				continue
-			}
-			loaded_names << f.name
-		} else {
-			println('Font not found: ${f.path}')
-		}
-	}
-
-	text := 'Hello السلام Verden 🌍9局て脂済事つまきな政98院'
-	app.layout = app.tr_ctx.layout_text(text, loaded_names) or { panic(err.msg()) }
 	app.renderer = text_render.new_renderer(mut app.ctx)
 }
 

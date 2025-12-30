@@ -51,29 +51,29 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 	}
 }
 
-fn (mut renderer Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
+fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32) !CachedGlyph {
 	flags := C.FT_LOAD_RENDER | C.FT_LOAD_COLOR
 
-	if C.FT_Load_Glyph(font.ft_face, index, flags) != 0 {
+	if C.FT_Load_Glyph(ft_face, index, flags) != 0 {
 		return error('FT_Load_Glyph failed')
 	}
 
-	glyph := font.ft_face.glyph
+	glyph := ft_face.glyph
 	ft_bitmap := glyph.bitmap
 
 	if ft_bitmap.buffer == 0 || ft_bitmap.width == 0 || ft_bitmap.rows == 0 {
 		return CachedGlyph{} // space or empty glyph
 	}
 
-	bitmap := ft_bitmap_to_bitmap(&ft_bitmap, font)!
+	bitmap := ft_bitmap_to_bitmap(&ft_bitmap, ft_face)!
 
-	return match ft_bitmap.pixel_mode == C.FT_PIXEL_MODE_BGRA {
-		true { renderer.atlas.insert_bitmap(bitmap, 0, bitmap.height) }
+	return match int(ft_bitmap.pixel_mode) {
+		C.FT_PIXEL_MODE_BGRA { renderer.atlas.insert_bitmap(bitmap, 0, bitmap.height) }
 		else { renderer.atlas.insert_bitmap(bitmap, int(glyph.bitmap_left), int(glyph.bitmap_top)) }
 	}
 }
 
-pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, font &Font) !Bitmap {
+pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec) !Bitmap {
 	if bmp.buffer == 0 || bmp.width == 0 || bmp.rows == 0 {
 		return error('Empty bitmap')
 	}
@@ -135,9 +135,11 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, font &Font) !Bitmap {
 					data[i + 3] = unsafe { src[3] } // A
 				}
 			}
-			needs_scaling := bmp.rows != font.size
-			if needs_scaling {
-				scale := f32(font.size) / f32(height)
+
+			target_size := int(ft_face.size.metrics.y_ppem)
+			needs_scaling := bmp.rows != target_size
+			if needs_scaling && target_size > 0 {
+				scale := f32(target_size) / f32(height)
 				new_w := int(f32(width) * scale)
 				new_h := int(f32(height) * scale)
 

@@ -37,13 +37,14 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 	mut cy := y + renderer.max_visual_height(layout)
 
 	for item in layout.items {
-		font_id := u64(voidptr(item.font.ft_face))
+		// item.ft_face is &C.FT_FaceRec
+		font_id := u64(voidptr(item.ft_face))
 
 		for glyph in item.glyphs {
 			key := font_id ^ (u64(glyph.index) << 32)
 
 			cg := renderer.cache[key] or {
-				cached_glyph := renderer.load_glyph(item.font, glyph.index) or {
+				cached_glyph := renderer.load_glyph(item.ft_face, glyph.index) or {
 					CachedGlyph{} // fallback blank glyph
 				}
 				renderer.cache[key] = cached_glyph
@@ -88,13 +89,13 @@ fn (mut renderer Renderer) max_visual_height(layout Layout) f32 {
 	mut bottom := f32(0)
 
 	for item in layout.items {
-		font_id := u64(voidptr(item.font.ft_face))
+		font_id := u64(voidptr(item.ft_face))
 
 		for glyph in item.glyphs {
 			key := font_id ^ (u64(glyph.index) << 32)
 
 			cg := renderer.cache[key] or {
-				cached_glyph := renderer.load_glyph(item.font, glyph.index) or {
+				cached_glyph := renderer.load_glyph(item.ft_face, glyph.index) or {
 					CachedGlyph{} // fallback blank glyph
 				}
 				renderer.cache[key] = cached_glyph
@@ -103,7 +104,7 @@ fn (mut renderer Renderer) max_visual_height(layout Layout) f32 {
 
 			// FreeType convention:
 			//  - cg.top is bitmap_top
-			//  - glyph.y_offset is HarfBuzz vertical offset (pixels)
+			//  - glyph.y_offset is HarfBuzz/Pango vertical offset (pixels)
 			glyph_top := f32(cg.top - glyph.y_offset)
 			glyph_height := (cg.v1 - cg.v0) * f32(renderer.atlas.height)
 			glyph_bottom := glyph_top - glyph_height

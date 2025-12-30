@@ -14,6 +14,14 @@ pub struct C.FT_LibraryRec {
 }
 
 @[typedef]
+pub struct C.FT_SizeRec {
+pub:
+	face    &C.FT_FaceRec
+	generic voidptr
+	metrics C.FT_Size_Metrics
+}
+
+@[typedef]
 pub struct C.FT_FaceRec {
 pub mut:
 	num_faces           i64
@@ -38,7 +46,7 @@ pub mut:
 	underline_position  i16
 	underline_thickness i16
 	glyph               &C.FT_GlyphSlotRec
-	size                C.FT_Size
+	size                &C.FT_SizeRec
 	charmap             C.FT_CharMap
 }
 
@@ -86,7 +94,16 @@ pub:
 }
 
 @[typedef]
-pub struct C.FT_Size {
+pub struct C.FT_Size_Metrics {
+pub:
+	x_ppem      u16
+	y_ppem      u16
+	x_scale     i64
+	y_scale     i64
+	ascender    i64
+	descender   i64
+	height      i64
+	max_advance i64
 }
 
 @[typedef]
@@ -105,81 +122,148 @@ fn C.FT_Render_Glyph(&C.FT_GlyphSlotRec, i32) int
 
 pub const ft_render_mode_normal = 0
 
-// HarfBuzz
-#include <hb.h>
-#include <hb-ft.h>
+// Pango & GObject & GLib
+#pkgconfig pango
+#pkgconfig pangoft2
+#pkgconfig gobject-2.0
+#pkgconfig glib-2.0
+
+#include <pango/pango.h>
+#include <pango/pangoft2.h>
+#include <glib-object.h>
+#include <glib.h>
+
+// GObject / GLib Types
+@[typedef]
+pub struct C.GObject {}
+
+pub type GCallback = fn ()
+
+fn C.g_object_unref(obj voidptr)
+fn C.g_object_ref(obj voidptr) voidptr
+
+// Pango Types
+@[typedef]
+pub struct C.PangoContext {}
 
 @[typedef]
-pub struct C.hb_buffer_t {
-}
+pub struct C.PangoLayout {}
 
 @[typedef]
-pub struct C.hb_font_t {
-}
+pub struct C.PangoFontDescription {}
 
 @[typedef]
-pub struct C.hb_blob_t {
-}
+pub struct C.PangoFontMap {}
 
 @[typedef]
-pub struct C.hb_face_t {
-}
+pub struct C.PangoFont {}
 
 @[typedef]
-pub struct C.hb_glyph_info_t {
+pub struct C.PangoLayoutIter {}
+
+@[typedef]
+pub struct C.PangoAttrList {}
+
+@[typedef]
+pub struct C.PangoAttribute {}
+
+// Pango Structs with accessible fields
+
+@[typedef]
+pub struct C.PangoRectangle {
 pub:
-	codepoint u32
-	mask      u32
-	cluster   u32
+	x      int
+	y      int
+	width  int
+	height int
 }
 
 @[typedef]
-pub struct C.hb_glyph_position_t {
+pub struct C.PangoGlyphGeometry {
 pub:
-	x_advance i32
-	y_advance i32
-	x_offset  i32
-	y_offset  i32
+	width    i32
+	x_offset i32
+	y_offset i32
 }
 
 @[typedef]
-pub struct C.hb_feature_t {
-	tag   u32
-	value u32
-	start u32
-	end   u32
+pub struct C.PangoGlyphVisAttr {
+pub:
+	is_cluster_start u32 // bitfield in C, simplified here (might need care if accessing)
 }
 
-fn C.hb_buffer_create() &C.hb_buffer_t
-fn C.hb_buffer_destroy(&C.hb_buffer_t)
-fn C.hb_buffer_add_utf8(&C.hb_buffer_t, &char, int, u32, int)
-fn C.hb_buffer_guess_segment_properties(&C.hb_buffer_t)
-fn C.hb_ft_font_create_referenced(&C.FT_FaceRec) &C.hb_font_t
-fn C.hb_font_destroy(&C.hb_font_t)
-fn C.hb_shape(&C.hb_font_t, &C.hb_buffer_t, &C.hb_feature_t, u32)
-fn C.hb_buffer_get_glyph_infos(&C.hb_buffer_t, &u32) &C.hb_glyph_info_t
-fn C.hb_buffer_get_glyph_positions(&C.hb_buffer_t, &u32) &C.hb_glyph_position_t
-fn C.hb_buffer_set_direction(&C.hb_buffer_t, int)
-fn C.hb_buffer_set_script(&C.hb_buffer_t, int)
-fn C.hb_buffer_set_language(&C.hb_buffer_t, voidptr)
-fn C.hb_language_from_string(&char, int) voidptr
-fn C.hb_script_from_string(&char, int) int
-fn C.hb_font_set_scale(&C.hb_font_t, int, int)
+@[typedef]
+pub struct C.PangoGlyphInfo {
+pub:
+	glyph    u32
+	geometry C.PangoGlyphGeometry
+	attr     C.PangoGlyphVisAttr
+}
 
-// Fribidi
-#include <fribidi.h>
+@[typedef]
+pub struct C.PangoGlyphString {
+pub:
+	num_glyphs   int
+	glyphs       &C.PangoGlyphInfo
+	log_clusters &int
+}
 
-// Fribidi constants and types
-pub const fribidi_type_ltr = 0x00000010 // FRIBIDI_TYPE_LTR
-pub const fribidi_type_rtl = 0x00000020 // FRIBIDI_TYPE_RTL
-pub const fribidi_type_on = 0x00000008 // FRIBIDI_TYPE_ON
+@[typedef]
+pub struct C.PangoAnalysis {
+pub:
+	shape_engine voidptr
+	lang_engine  voidptr
+	font         &C.PangoFont
+	level        u8
+	gravity      u8
+	flags        u8
+	script       u8
+	language     voidptr
+	extra_attrs  voidptr
+}
 
-pub const hb_direction_ltr = 4
-pub const hb_direction_rtl = 5
-pub const hb_direction_ttb = 6
-pub const hb_direction_btt = 7
+@[typedef]
+pub struct C.PangoItem {
+pub:
+	offset    int
+	length    int
+	num_chars int
+	analysis  C.PangoAnalysis
+}
 
-fn C.fribidi_log2vis(&u32, int, &u32, &u32, &int, &int, &i8) int
+@[typedef]
+pub struct C.PangoGlyphItem {
+pub:
+	item   &C.PangoItem
+	glyphs &C.PangoGlyphString
+}
 
-fn C.fribidi_get_bidi_types(&u32, int, &u32)
-fn C.fribidi_get_par_embedding_levels(&u32, int, &u32, &i8) int
+// Global Pango Constants
+pub const pango_scale = 1024
+
+// Functions
+
+// Pango FT2
+fn C.pango_ft2_font_map_new() &C.PangoFontMap
+fn C.pango_font_map_create_context(&C.PangoFontMap) &C.PangoContext
+fn C.pango_ft2_font_get_face(&C.PangoFont) &C.FT_FaceRec
+
+// Pango Context / Layout
+fn C.pango_layout_new(&C.PangoContext) &C.PangoLayout
+fn C.pango_layout_set_text(&C.PangoLayout, &char, int)
+fn C.pango_layout_set_font_description(&C.PangoLayout, &C.PangoFontDescription)
+fn C.pango_layout_get_iter(&C.PangoLayout) &C.PangoLayoutIter
+fn C.pango_layout_get_extents(&C.PangoLayout, &C.PangoRectangle, &C.PangoRectangle)
+
+// Pango Iter
+fn C.pango_layout_iter_free(&C.PangoLayoutIter)
+fn C.pango_layout_iter_next_run(&C.PangoLayoutIter) bool
+fn C.pango_layout_iter_get_run_readonly(&C.PangoLayoutIter) &C.PangoGlyphItem
+
+// Pango Font Description
+fn C.pango_font_description_new() &C.PangoFontDescription
+fn C.pango_font_description_from_string(&char) &C.PangoFontDescription
+fn C.pango_font_description_free(&C.PangoFontDescription)
+fn C.pango_font_description_set_family(&C.PangoFontDescription, &char)
+fn C.pango_font_description_set_size(&C.PangoFontDescription, int) // size in Pango units
+fn C.pango_font_description_set_absolute_size(&C.PangoFontDescription, f64)

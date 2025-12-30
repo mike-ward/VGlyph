@@ -7,9 +7,10 @@ pub mut:
 
 pub struct Item {
 pub:
-	font   &Font
-	glyphs []Glyph
-	width  f64
+	run_text string // Useful for debugging or if we need original text
+	ft_face  &C.FT_FaceRec
+	glyphs   []Glyph
+	width    f64
 }
 
 pub struct Glyph {
@@ -19,139 +20,113 @@ pub:
 	y_offset  f64
 	x_advance f64
 	y_advance f64
-	codepoint u32
+	codepoint u32 // Optional, might be 0 if not easily tracking back
 }
 
-struct Run {
-	font  &Font
-	text  string
-	level i8
-}
-
-pub fn (mut ctx Context) layout_text(text string, font_names []string) !Layout {
+pub fn (mut ctx Context) layout_text(text string, font_desc_str string) !Layout {
 	if text.len == 0 {
 		return Layout{}
 	}
 
-	runes := text.runes()
-	len := runes.len
+	layout := C.pango_layout_new(ctx.pango_context)
+	if voidptr(layout) == unsafe { nil } {
+		return error('Failed to create Pango Layout')
+	}
+	defer { C.g_object_unref(layout) }
 
-	// FriBidi allocations
-	mut btypes := []u32{len: len}
-	mut levels := []i8{len: len}
-	mut visual_str := []u32{len: len}
-	mut map_visual_to_logical := []int{len: len}
-	mut map_logical_to_visual := []int{len: len}
+	C.pango_layout_set_text(layout, text.str, text.len)
 
-	C.fribidi_get_bidi_types(runes.data, len, btypes.data)
-	mut pbase_dir := u32(fribidi_type_on)
-	C.fribidi_get_par_embedding_levels(btypes.data, len, &pbase_dir, levels.data)
-	C.fribidi_log2vis(runes.data, len, &pbase_dir, visual_str.data, map_visual_to_logical.data,
-		map_logical_to_visual.data, levels.data)
+	desc := C.pango_font_description_from_string(font_desc_str.str)
+	if voidptr(desc) != unsafe { nil } {
+		C.pango_layout_set_font_description(layout, desc)
+		C.pango_font_description_free(desc)
+	}
+
+	iter := C.pango_layout_get_iter(layout)
+	if voidptr(iter) == unsafe { nil } {
+		return error('Failed to create Pango Layout Iterator')
+	}
+	defer { C.pango_layout_iter_free(iter) }
+
 	mut items := []Item{}
 
-	if len > 0 {
-		mut start_i := 0
-		mut start_logical := map_visual_to_logical[0]
-		mut current_level := levels[start_logical]
-		mut current_font := find_font_for_rune(ctx, font_names, runes[start_logical])!
+	for {
+		run := C.pango_layout_iter_get_run_readonly(iter)
+		if voidptr(run) != unsafe { nil } {
+			pango_item := run.item
+			pango_font := pango_item.analysis.font
 
-		for i in 1 .. len {
-			logical_idx := map_visual_to_logical[i]
-			level := levels[logical_idx]
-			font := find_font_for_rune(ctx, font_names, runes[logical_idx])!
+			// Critical: Get FT_Face from PangoFont
+			// Pango might return NULL font for generic fallback if not found?
+			if voidptr(pango_font) != unsafe { nil } {
+				ft_face := C.pango_ft2_font_get_face(pango_font)
+				if voidptr(ft_face) != unsafe { nil } {
+					// Extract glyphs
+					glyph_string := run.glyphs
+					num_glyphs := glyph_string.num_glyphs
+					mut glyphs := []Glyph{cap: num_glyphs}
+					mut width := f64(0)
 
-			if level != current_level || voidptr(font) != voidptr(current_font) {
-				items << ctx.create_item_from_run(runes, map_visual_to_logical, start_i,
-					i, current_font, current_level)
+					unsafe {
+						// Iterate over C array of PangoGlyphInfo
+						infos := glyph_string.glyphs
 
-				start_i = i
-				current_level = level
-				unsafe {
-					current_font = font
+						for i in 0 .. num_glyphs {
+							info := infos[i]
+
+							// Pango units are 1/pango_scale (1024)
+							// We need to convert to pixels for the renderer
+							// But actually, Pango units are usually 1024 * points?
+							// Standard Pango units:
+							//  PANGO_SCALE = 1024.
+							//  Positions are in Pango units.
+							//  FT_Face usually works in 26.6 fixed point (1/64 pixel).
+							//  Renderer expects PIXELS (float).
+
+							// Wait, renderer.v said:
+							// x_offset = pos.x_offset / 64.0 (for HarzBuzz)
+
+							// Pango uses PANGO_SCALE = 1024. So dividing by 1024.0 gives pixels?
+							// Yes, Pango_scale is 1024.
+
+							x_off := f64(info.geometry.x_offset) / f64(pango_scale)
+							y_off := f64(info.geometry.y_offset) / f64(pango_scale)
+							x_adv := f64(info.geometry.width) / f64(pango_scale)
+							y_adv := 0.0 // Horizontal text assumption for now
+
+							glyphs << Glyph{
+								index:     info.glyph
+								x_offset:  x_off
+								y_offset:  y_off
+								x_advance: x_adv
+								y_advance: y_adv
+								codepoint: 0
+							}
+							width += x_adv
+						}
+					}
+					// Get sub-text for this item
+					start_index := pango_item.offset
+					length := pango_item.length
+					// text is standard string (byte buffer). offset/length are bytes.
+					run_str := unsafe { (text.str + start_index).vstring_with_len(length) }
+
+					items << Item{
+						run_text: run_str
+						ft_face:  ft_face
+						glyphs:   glyphs
+						width:    width
+					}
 				}
 			}
 		}
-		items << ctx.create_item_from_run(runes, map_visual_to_logical, start_i, len,
-			current_font, current_level)
+
+		if !C.pango_layout_iter_next_run(iter) {
+			break
+		}
 	}
 
 	return Layout{
 		items: items
-	}
-}
-
-// simple fallback: find first font that supports the rune
-fn find_font_for_rune(ctx &Context, fonts []string, r rune) !&Font {
-	for name in fonts {
-		if name in ctx.fonts {
-			f := ctx.fonts[name] or { return error('ctx.fonts[${name}] not found') }
-			if f.has_glyph(u32(r)) {
-				return f
-			}
-		}
-	}
-	// Fallback to first font if none found
-	if fonts.len > 0 {
-		return ctx.fonts[fonts[0]] or { error('Fallback to first font failed') }
-	}
-	return error('No fonts loaded')
-}
-
-fn (mut ctx Context) create_item_from_run(runes []rune, map_vis_to_log []int, start_i int, end_i int, font &Font, level i8) Item {
-	mut run_text_runes := []rune{cap: end_i - start_i}
-
-	for i in start_i .. end_i {
-		run_text_runes << runes[map_vis_to_log[i]]
-	}
-
-	run := unsafe {
-		Run{
-			font:  font
-			text:  run_text_runes.string()
-			level: level
-		}
-	}
-	return ctx.shape_run(run)
-}
-
-fn (mut ctx Context) shape_run(run Run) Item {
-	buf := C.hb_buffer_create()
-	defer { C.hb_buffer_destroy(buf) }
-
-	C.hb_buffer_add_utf8(buf, run.text.str, run.text.len, 0, -1)
-
-	dir := if run.level % 2 == 1 { hb_direction_rtl } else { hb_direction_ltr }
-	C.hb_buffer_set_direction(buf, dir)
-
-	C.hb_buffer_guess_segment_properties(buf)
-	C.hb_shape(run.font.hb_font, buf, 0, 0)
-
-	length := u32(0)
-	infos := C.hb_buffer_get_glyph_infos(buf, &length)
-	positions := C.hb_buffer_get_glyph_positions(buf, &length)
-
-	mut glyphs := []Glyph{cap: int(length)}
-	mut total_width := f64(0)
-
-	unsafe {
-		for i in 0 .. int(length) {
-			info := infos[i]
-			pos := positions[i]
-
-			glyphs << Glyph{
-				index:     info.codepoint
-				x_offset:  f64(pos.x_offset) / 64.0
-				y_offset:  f64(pos.y_offset) / 64.0
-				x_advance: f64(pos.x_advance) / 64.0
-				y_advance: f64(pos.y_advance) / 64.0
-			}
-			total_width += f64(pos.x_advance) / 64.0
-		}
-	}
-	return Item{
-		font:   run.font
-		glyphs: glyphs
-		width:  total_width
 	}
 }

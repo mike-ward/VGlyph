@@ -1,9 +1,9 @@
 module text_render
 
 pub struct Context {
-	ft_lib &C.FT_LibraryRec
-mut:
-	fonts map[string]&Font
+	ft_lib         &C.FT_LibraryRec
+	pango_font_map &C.PangoFontMap
+	pango_context  &C.PangoContext
 }
 
 pub fn new_context() !&Context {
@@ -12,15 +12,33 @@ pub fn new_context() !&Context {
 	if C.FT_Init_FreeType(&ft_lib) != 0 {
 		return error('Failed to initialize FreeType library')
 	}
+
+	pango_font_map := C.pango_ft2_font_map_new()
+	if voidptr(pango_font_map) == unsafe { nil } {
+		C.FT_Done_FreeType(ft_lib)
+		return error('Failed to create Pango Font Map')
+	}
+
+	pango_context := C.pango_font_map_create_context(pango_font_map)
+	if voidptr(pango_context) == unsafe { nil } {
+		C.g_object_unref(pango_font_map)
+		C.FT_Done_FreeType(ft_lib)
+		return error('Failed to create Pango Context')
+	}
+
 	return &Context{
-		ft_lib: ft_lib
-		fonts:  map[string]&Font{}
+		ft_lib:         ft_lib
+		pango_font_map: pango_font_map
+		pango_context:  pango_context
 	}
 }
 
 pub fn (mut ctx Context) free() {
-	for _, mut font in ctx.fonts {
-		font.free()
+	if voidptr(ctx.pango_context) != unsafe { nil } {
+		C.g_object_unref(ctx.pango_context)
+	}
+	if voidptr(ctx.pango_font_map) != unsafe { nil } {
+		C.g_object_unref(ctx.pango_font_map)
 	}
 	if voidptr(ctx.ft_lib) != unsafe { nil } {
 		C.FT_Done_FreeType(ctx.ft_lib)
