@@ -22,21 +22,10 @@ pub:
 	codepoint u32
 }
 
-// simple fallback: find first font that supports the rune
-fn find_font_for_rune(ctx &Context, fonts []string, r rune) !&Font {
-	for name in fonts {
-		if name in ctx.fonts {
-			f := ctx.fonts[name] or { return error('ctx.fonts[${name}] not found') }
-			if f.has_glyph(u32(r)) {
-				return f
-			}
-		}
-	}
-	// Fallback to first font if none found
-	if fonts.len > 0 {
-		return ctx.fonts[fonts[0]] or { error('Fallback to first font failed') }
-	}
-	return error('No fonts loaded')
+struct Run {
+	font  &Font
+	text  string
+	level i8
 }
 
 pub fn (mut ctx Context) layout_text(text string, font_names []string) !Layout {
@@ -54,13 +43,11 @@ pub fn (mut ctx Context) layout_text(text string, font_names []string) !Layout {
 	mut map_visual_to_logical := []int{len: len}
 	mut map_logical_to_visual := []int{len: len}
 
-	unsafe {
-		C.fribidi_get_bidi_types(runes.data, len, btypes.data)
-		mut pbase_dir := u32(fribidi_type_on)
-		C.fribidi_get_par_embedding_levels(btypes.data, len, &pbase_dir, levels.data)
-		C.fribidi_log2vis(runes.data, len, &pbase_dir, visual_str.data, map_visual_to_logical.data,
-			map_logical_to_visual.data, levels.data)
-	}
+	C.fribidi_get_bidi_types(runes.data, len, btypes.data)
+	mut pbase_dir := u32(fribidi_type_on)
+	C.fribidi_get_par_embedding_levels(btypes.data, len, &pbase_dir, levels.data)
+	C.fribidi_log2vis(runes.data, len, &pbase_dir, visual_str.data, map_visual_to_logical.data,
+		map_logical_to_visual.data, levels.data)
 	mut items := []Item{}
 
 	if len > 0 {
@@ -94,20 +81,28 @@ pub fn (mut ctx Context) layout_text(text string, font_names []string) !Layout {
 	}
 }
 
-fn (mut ctx Context) create_item_from_run(runes []rune, map_vis_to_log []int, start_i int, end_i int, font &Font, level i8) Item {
-	first_log := map_vis_to_log[start_i]
-	last_log := map_vis_to_log[end_i - 1]
+// simple fallback: find first font that supports the rune
+fn find_font_for_rune(ctx &Context, fonts []string, r rune) !&Font {
+	for name in fonts {
+		if name in ctx.fonts {
+			f := ctx.fonts[name] or { return error('ctx.fonts[${name}] not found') }
+			if f.has_glyph(u32(r)) {
+				return f
+			}
+		}
+	}
+	// Fallback to first font if none found
+	if fonts.len > 0 {
+		return ctx.fonts[fonts[0]] or { error('Fallback to first font failed') }
+	}
+	return error('No fonts loaded')
+}
 
+fn (mut ctx Context) create_item_from_run(runes []rune, map_vis_to_log []int, start_i int, end_i int, font &Font, level i8) Item {
 	mut run_text_runes := []rune{cap: end_i - start_i}
 
-	if first_log < last_log {
-		for k in first_log .. (last_log + 1) {
-			run_text_runes << runes[k]
-		}
-	} else {
-		for k in last_log .. (first_log + 1) {
-			run_text_runes << runes[k]
-		}
+	for i in start_i .. end_i {
+		run_text_runes << runes[map_vis_to_log[i]]
 	}
 
 	run := unsafe {
@@ -118,12 +113,6 @@ fn (mut ctx Context) create_item_from_run(runes []rune, map_vis_to_log []int, st
 		}
 	}
 	return ctx.shape_run(run)
-}
-
-struct Run {
-	font  &Font
-	text  string
-	level i8
 }
 
 fn (mut ctx Context) shape_run(run Run) Item {
