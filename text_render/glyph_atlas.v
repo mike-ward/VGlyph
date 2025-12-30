@@ -51,60 +51,6 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 	}
 }
 
-// Insert a bitmap into the atlas and return its UVs
-pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !CachedGlyph {
-	glyph_w := bmp.width
-	glyph_h := bmp.height
-
-	// Move to next row if needed
-	if atlas.cursor_x + glyph_w > atlas.width {
-		atlas.cursor_x = 0
-		atlas.cursor_y += atlas.row_height
-		atlas.row_height = 0
-	}
-
-	if atlas.cursor_y + glyph_h > atlas.height {
-		return error('GlyphAtlas full! Increase atlas size.')
-	}
-
-	copy_bitmap_to_atlas(mut atlas, bmp, atlas.cursor_x, atlas.cursor_y)
-	atlas.dirty = true
-
-	// Compute UVs
-	u0 := f32(atlas.cursor_x) / f32(atlas.width)
-	v0 := f32(atlas.cursor_y) / f32(atlas.height)
-	u1 := f32(atlas.cursor_x + glyph_w) / f32(atlas.width)
-	v1 := f32(atlas.cursor_y + glyph_h) / f32(atlas.height)
-
-	cached := CachedGlyph{
-		u0:   u0
-		v0:   v0
-		u1:   u1
-		v1:   v1
-		left: left
-		top:  top
-	}
-
-	// Advance cursor
-	atlas.cursor_x += glyph_w
-	if glyph_h > atlas.row_height {
-		atlas.row_height = glyph_h
-	}
-
-	return cached
-}
-
-fn copy_bitmap_to_atlas(mut atlas GlyphAtlas, bmp Bitmap, x int, y int) {
-	row_bytes := usize(bmp.width * 4)
-	unsafe {
-		for row in 0 .. bmp.height {
-			src_ptr := &u8(bmp.data.data) + (row * bmp.width * 4)
-			dst_ptr := &u8(atlas.image.data) + ((y + row) * atlas.width + x) * 4
-			vmemcpy(dst_ptr, src_ptr, row_bytes)
-		}
-	}
-}
-
 fn (mut renderer Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
 	flags := C.FT_LOAD_RENDER | C.FT_LOAD_COLOR
 
@@ -112,22 +58,18 @@ fn (mut renderer Renderer) load_glyph(font &Font, index u32) !CachedGlyph {
 		return error('FT_Load_Glyph failed')
 	}
 
-	bmp := font.ft_face.glyph.bitmap
+	glyph := font.ft_face.glyph
+	ft_bitmap := glyph.bitmap
 
-	if bmp.buffer == 0 || bmp.width == 0 || bmp.rows == 0 {
+	if ft_bitmap.buffer == 0 || ft_bitmap.width == 0 || ft_bitmap.rows == 0 {
 		return CachedGlyph{} // space or empty glyph
 	}
 
-	bitmap := ft_bitmap_to_bitmap(&bmp, font)!
+	bitmap := ft_bitmap_to_bitmap(&ft_bitmap, font)!
 
-	return match bmp.pixel_mode == C.FT_PIXEL_MODE_BGRA {
-		true {
-			renderer.atlas.insert_bitmap(bitmap, 0, bitmap.height)
-		}
-		else {
-			renderer.atlas.insert_bitmap(bitmap, int(font.ft_face.glyph.bitmap_left),
-				int(font.ft_face.glyph.bitmap_top))
-		}
+	return match ft_bitmap.pixel_mode == C.FT_PIXEL_MODE_BGRA {
+		true { renderer.atlas.insert_bitmap(bitmap, 0, bitmap.height) }
+		else { renderer.atlas.insert_bitmap(bitmap, int(glyph.bitmap_left), int(glyph.bitmap_top)) }
 	}
 }
 
@@ -233,4 +175,58 @@ pub fn scale_bitmap_nn(src []u8, src_w int, src_h int, dst_w int, dst_h int) []u
 		}
 	}
 	return dst
+}
+
+// Insert a bitmap into the atlas and return its UVs
+pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !CachedGlyph {
+	glyph_w := bmp.width
+	glyph_h := bmp.height
+
+	// Move to next row if needed
+	if atlas.cursor_x + glyph_w > atlas.width {
+		atlas.cursor_x = 0
+		atlas.cursor_y += atlas.row_height
+		atlas.row_height = 0
+	}
+
+	if atlas.cursor_y + glyph_h > atlas.height {
+		return error('GlyphAtlas full! Increase atlas size.')
+	}
+
+	copy_bitmap_to_atlas(mut atlas, bmp, atlas.cursor_x, atlas.cursor_y)
+	atlas.dirty = true
+
+	// Compute UVs
+	u0 := f32(atlas.cursor_x) / f32(atlas.width)
+	v0 := f32(atlas.cursor_y) / f32(atlas.height)
+	u1 := f32(atlas.cursor_x + glyph_w) / f32(atlas.width)
+	v1 := f32(atlas.cursor_y + glyph_h) / f32(atlas.height)
+
+	cached := CachedGlyph{
+		u0:   u0
+		v0:   v0
+		u1:   u1
+		v1:   v1
+		left: left
+		top:  top
+	}
+
+	// Advance cursor
+	atlas.cursor_x += glyph_w
+	if glyph_h > atlas.row_height {
+		atlas.row_height = glyph_h
+	}
+
+	return cached
+}
+
+fn copy_bitmap_to_atlas(mut atlas GlyphAtlas, bmp Bitmap, x int, y int) {
+	row_bytes := usize(bmp.width * 4)
+	for row in 0 .. bmp.height {
+		unsafe {
+			src_ptr := &u8(bmp.data.data) + (row * bmp.width * 4)
+			dst_ptr := &u8(atlas.image.data) + ((y + row) * atlas.width + x) * 4
+			vmemcpy(dst_ptr, src_ptr, row_bytes)
+		}
+	}
 }

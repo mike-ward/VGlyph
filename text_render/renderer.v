@@ -27,7 +27,7 @@ pub fn new_renderer(mut ctx gg.Context) &Renderer {
 }
 
 pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
-	// If atlas has new glyphs, update GPU once
+	// If atlas has new glyphs, update GPU once (sokol restriction)
 	if renderer.atlas.dirty {
 		renderer.atlas.image.update_pixel_data(renderer.atlas.image.data)
 		renderer.atlas.dirty = false
