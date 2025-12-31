@@ -199,12 +199,27 @@ pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 		pos := C.PangoRectangle{}
 		C.pango_layout_index_to_pos(layout, i, &pos)
 		
+		// Check for RTL rectangles (negative width) or height
+		mut final_x := f32(pos.x) / f32(pango_scale)
+		mut final_y := f32(pos.y) / f32(pango_scale)
+		mut final_w := f32(pos.width) / f32(pango_scale)
+		mut final_h := f32(pos.height) / f32(pango_scale)
+
+		if final_w < 0 {
+			final_x += final_w
+			final_w = -final_w
+		}
+		if final_h < 0 {
+			final_y += final_h
+			final_h = -final_h
+		}
+
 		char_rects << CharRect{
 			rect: gg.Rect{
-				x: f32(pos.x) / f32(pango_scale)
-				y: f32(pos.y) / f32(pango_scale)
-				width: f32(pos.width) / f32(pango_scale)
-				height: f32(pos.height) / f32(pango_scale)
+				x: final_x
+				y: final_y
+				width: final_w
+				height: final_h
 			}
 			index: i
 		}
