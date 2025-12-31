@@ -4,7 +4,14 @@ import gg
 
 pub struct Layout {
 pub mut:
-	items []Item
+	items      []Item
+	char_rects []CharRect
+}
+
+pub struct CharRect {
+pub:
+	rect  gg.Rect
+	index int // Byte index
 }
 
 pub struct Item {
@@ -183,7 +190,50 @@ pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 		}
 	}
 
-	return Layout{
-		items: items
+	// Bake Character Rectangles for Hit Testing
+	mut char_rects := []CharRect{}
+	// Iterate by rune to get valid start indices for each character
+	// Pango expects byte indices
+	mut i := 0
+	for i < text.len {
+		pos := C.PangoRectangle{}
+		C.pango_layout_index_to_pos(layout, i, &pos)
+		
+		char_rects << CharRect{
+			rect: gg.Rect{
+				x: f32(pos.x) / f32(pango_scale)
+				y: f32(pos.y) / f32(pango_scale)
+				width: f32(pos.width) / f32(pango_scale)
+				height: f32(pos.height) / f32(pango_scale)
+			}
+			index: i
+		}
+
+		// Iterate runes manually to skip intermediate bytes
+		mut step := 1
+		b := text[i]
+		if b >= 0xF0 { step = 4 }
+		else if b >= 0xE0 { step = 3 }
+		else if b >= 0xC0 { step = 2 }
+		i += step
 	}
+
+	return Layout{
+		items:      items
+		char_rects: char_rects
+	}
+}
+
+// hit_test returns the byte index of the character at (x, y) relative to the layout origin.
+// Returns -1 if no character is found close enough.
+pub fn (l Layout) hit_test(x f32, y f32) int {
+	// Simple linear search.
+	// We could optimize with spatial partitioning if needed.
+	for cr in l.char_rects {
+		if x >= cr.rect.x && x <= cr.rect.x + cr.rect.width && y >= cr.rect.y
+			&& y <= cr.rect.y + cr.rect.height {
+			return cr.index
+		}
+	}
+	return -1
 }

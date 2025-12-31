@@ -307,6 +307,7 @@ fn C.pango_layout_set_markup(&C.PangoLayout, &char, int)
 fn C.pango_layout_set_font_description(&C.PangoLayout, &C.PangoFontDescription)
 fn C.pango_layout_get_iter(&C.PangoLayout) &C.PangoLayoutIter
 fn C.pango_layout_get_extents(&C.PangoLayout, &C.PangoRectangle, &C.PangoRectangle)
+fn C.pango_layout_index_to_pos(&C.PangoLayout, int, &C.PangoRectangle)
 
 // Pango Iter
 fn C.pango_layout_iter_free(&C.PangoLayoutIter)

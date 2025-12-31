@@ -9,6 +9,8 @@ mut:
 	tr_ctx   &text_render.Context
 	renderer &text_render.Renderer
 	layouts  []text_render.Layout
+	mouse_x  f32
+	mouse_y  f32
 }
 
 fn main() {
@@ -25,6 +27,7 @@ fn main() {
 		create_window: true
 		window_title:  'V Text Render Atlas Demo'
 		frame_fn:      frame
+		event_fn:      on_event
 		user_data:     app
 		init_fn:       init
 	)
@@ -84,10 +87,36 @@ fn frame(mut app App) {
 		mut y := f32(10)
 		for layout in app.layouts {
 			app.renderer.draw_layout(layout, 10, y)
+
+			// Hit Testing Demo
+			// Check if mouse is within this layout's vertical bounds first for efficiency (optional)
+			// Adjust mouse coordinates to be relative to the layout
+			local_x := app.mouse_x - 10
+			local_y := app.mouse_y - y
+
+			hit_index := layout.hit_test(local_x, local_y)
+			if hit_index != -1 {
+				// Find the rect for this index to draw a cursor
+				for cr in layout.char_rects {
+					if cr.index == hit_index {
+						// Draw cursor rect
+						app.ctx.draw_rect_empty(10 + cr.rect.x, y + cr.rect.y, cr.rect.width,
+							cr.rect.height, gg.yellow)
+						break
+					}
+				}
+			}
+
 			y += app.renderer.max_visual_height(layout) + 20
 		}
 		app.renderer.commit()
 	}
-
 	app.ctx.end()
+}
+
+fn on_event(e &gg.Event, mut app App) {
+	if e.typ == .mouse_move {
+		app.mouse_x = e.mouse_x
+		app.mouse_y = e.mouse_y
+	}
 }
