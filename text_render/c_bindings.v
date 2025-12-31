@@ -270,7 +270,6 @@ pub enum PangoAttrType {
 	pango_attr_background    = 10
 	pango_attr_underline     = 11
 	pango_attr_strikethrough = 12
-	pango_attr_overline      = 29
 }
 
 pub enum PangoUnderline {
@@ -279,11 +278,6 @@ pub enum PangoUnderline {
 	pango_underline_double = 2
 	pango_underline_low    = 3
 	pango_underline_error  = 4
-}
-
-pub enum PangoOverline {
-	pango_overline_none   = 0
-	pango_overline_single = 1
 }
 
 @[typedef]

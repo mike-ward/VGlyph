@@ -31,9 +31,6 @@ pub:
 	underline_thickness     f64
 	strikethrough_offset    f64
 	strikethrough_thickness f64
-	has_overline            bool
-	overline_offset         f64
-	overline_thickness      f64
 
 	// Background
 	has_bg_color bool
@@ -158,7 +155,6 @@ pub mut:
 	bg_color          gg.Color
 	has_underline     bool
 	has_strikethrough bool
-	has_overline      bool
 }
 
 // parse_run_attributes iterates through Pango attributes for a given item
@@ -207,11 +203,6 @@ fn parse_run_attributes(pango_item &C.PangoItem) RunAttributes {
 					if int_attr.value != 0 {
 						attrs.has_strikethrough = true
 					}
-				} else if attr_type == .pango_attr_overline {
-					int_attr := &C.PangoAttrInt(attr)
-					if int_attr.value != int(PangoOverline.pango_overline_none) {
-						attrs.has_overline = true
-					}
 				}
 			}
 			curr_attr_node = curr_attr_node.next
@@ -226,15 +217,13 @@ pub mut:
 	und_thick    f64
 	strike_pos   f64
 	strike_thick f64
-	over_pos     f64
-	over_thick   f64
 }
 
 // get_run_metrics fetches font metrics (position and thickness) for
 // the active decorations (underline, strikethrough, overline) using Pango's font API.
 fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage, attrs RunAttributes) RunMetrics {
 	mut m := RunMetrics{}
-	if attrs.has_underline || attrs.has_strikethrough || attrs.has_overline {
+	if attrs.has_underline || attrs.has_strikethrough {
 		metrics := C.pango_font_get_metrics(pango_font, language)
 		if metrics != unsafe { nil } {
 			if attrs.has_underline {
@@ -256,15 +245,6 @@ fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage, attrs Run
 				m.strike_thick = f64(val_thick) / f64(pango_scale)
 				if m.strike_thick < 1.0 {
 					m.strike_thick = 1.0
-				}
-			}
-			if attrs.has_overline {
-				val_ascent := C.pango_font_metrics_get_ascent(metrics)
-				val_thick := C.pango_font_metrics_get_underline_thickness(metrics)
-				m.over_pos = (f64(val_ascent) / f64(pango_scale)) - 3.0
-				m.over_thick = f64(val_thick) / f64(pango_scale)
-				if m.over_thick < 1.0 {
-					m.over_thick = 1.0
 				}
 			}
 			C.pango_font_metrics_unref(metrics)
@@ -357,9 +337,6 @@ fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string) Item
 		underline_thickness:     metrics.und_thick
 		strikethrough_offset:    metrics.strike_pos
 		strikethrough_thickness: metrics.strike_thick
-		has_overline:            attrs.has_overline
-		overline_offset:         metrics.over_pos
-		overline_thickness:      metrics.over_thick
 		has_bg_color:            attrs.has_bg_color
 		bg_color:                attrs.bg_color
 		ascent:                  run_ascent
