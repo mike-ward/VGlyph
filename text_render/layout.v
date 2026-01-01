@@ -22,7 +22,7 @@ pub:
 	width    f64
 	x        f64 // Run position relative to layout (x)
 	y        f64 // Run position relative to layout (baseline y)
-	color    gg.Color = gg.Color{255, 255, 255, 255}
+	color    gg.Color = gg.Color{0, 0, 0, 255}
 
 	// Text Decoration
 	has_underline           bool
@@ -161,7 +161,7 @@ pub mut:
 // and extracts relevant visual properties like color and text decorations.
 fn parse_run_attributes(pango_item &C.PangoItem) RunAttributes {
 	mut attrs := RunAttributes{
-		color:    gg.Color{255, 255, 255, 255}
+		color:    gg.Color{0, 0, 0, 255}
 		bg_color: gg.Color{0, 0, 0, 0}
 	}
 
