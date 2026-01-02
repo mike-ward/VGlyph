@@ -220,14 +220,25 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 
 	// Apply Style Attributes
 	// We use a PangoAttrList to apply global styles to the text.
-	// These will merge with any markup if markup is also used, though usually one uses one or the other.
-	attr_list := C.pango_attr_list_new()
+	// These will merge with any markup if markup is also used.
+	// We copy the existing attributes list (from markup) or create a new one to ensure we don't overwrite markup styles.
+	mut attr_list := unsafe { &C.PangoAttrList(nil) }
+	
+	existing_list := C.pango_layout_get_attributes(layout)
+	if existing_list != unsafe { nil } {
+		attr_list = C.pango_attr_list_copy(existing_list)
+	} else {
+		attr_list = C.pango_attr_list_new()
+	}
+
 	if attr_list != unsafe { nil } {
 		// Foreground Color
 		// Only apply if not fully transparent, or maybe just always apply if user sets it?
 		// Default is black. If user passed gg.black, we apply it.
 		// To allow "default pango color" we might need an option, but for now we enforce cfg.color.
-		{
+		// note: if using markup, we skip the global color unless we want to force it?
+		// For now, let markup win by default.
+		if !cfg.use_markup {
 			// Pango uses 16-bit colors (0-65535)
 			mut fg_attr := C.pango_attr_foreground_new(u16(cfg.color.r) << 8, u16(cfg.color.g) << 8,
 				u16(cfg.color.b) << 8)

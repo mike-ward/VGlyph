@@ -482,8 +482,10 @@ fn C.pango_attr_list_new() &C.PangoAttrList
 fn C.pango_attr_list_unref(&C.PangoAttrList)
 fn C.pango_attr_list_insert(&C.PangoAttrList, &C.PangoAttribute)
 fn C.pango_layout_set_attributes(&C.PangoLayout, &C.PangoAttrList)
+fn C.pango_layout_get_attributes(&C.PangoLayout) &C.PangoAttrList
 
 // Pango Attribute Constructors
+fn C.pango_attr_list_copy(&C.PangoAttrList) &C.PangoAttrList
 fn C.pango_attr_foreground_new(u16, u16, u16) &C.PangoAttribute
 fn C.pango_attr_background_new(u16, u16, u16) &C.PangoAttribute
 fn C.pango_attr_underline_new(PangoUnderline) &C.PangoAttribute
