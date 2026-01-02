@@ -223,7 +223,7 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 	// These will merge with any markup if markup is also used.
 	// We copy the existing attributes list (from markup) or create a new one to ensure we don't overwrite markup styles.
 	mut attr_list := unsafe { &C.PangoAttrList(nil) }
-	
+
 	existing_list := C.pango_layout_get_attributes(layout)
 	if existing_list != unsafe { nil } {
 		attr_list = C.pango_attr_list_copy(existing_list)

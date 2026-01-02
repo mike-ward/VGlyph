@@ -143,7 +143,7 @@ fn test_hit_test_rect() {
 		assert false, 'Should have hit'
 		return
 	}
-	
+
 	// Basic validation that we got a reasonable rect
 	assert rect.width > 0
 	assert rect.height > 0
@@ -153,4 +153,3 @@ fn test_hit_test_rect() {
 		assert false, 'Should have missed'
 	}
 }
-
