@@ -102,6 +102,12 @@ pub fn (mut ts TextSystem) commit() {
 	ts.renderer.commit()
 }
 
+// get_atlas_image returns the underlying texture atlas image.
+// This is primarily for debugging purposes to visualize the safe-packing of glyphs.
+pub fn (ts &TextSystem) get_atlas_image() gg.Image {
+	return ts.renderer.atlas.image
+}
+
 // Internal Helpers
 
 fn (ts TextSystem) get_cache_key(text string, cfg TextConfig) u64 {
