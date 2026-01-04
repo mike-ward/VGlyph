@@ -18,6 +18,7 @@ demo
 *.so
 *.dylib
 *.dll
+*.dSYM
 
 # Ignore binary output folders
 bin/

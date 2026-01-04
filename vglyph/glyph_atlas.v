@@ -56,7 +56,9 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32) !CachedG
 	flags := C.FT_LOAD_RENDER | C.FT_LOAD_COLOR
 
 	if C.FT_Load_Glyph(ft_face, index, flags) != 0 {
-		log.error('${@FILE_LINE}: FT_Load_Glyph failed')
+		if index != 0xfffffff {
+			log.error('${@FILE_LINE}: FT_Load_Glyph failed 0x${index:x}')
+		}
 		return error('FT_Load_Glyph failed')
 	}
 
