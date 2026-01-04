@@ -1,6 +1,6 @@
 module vglyph
 
-#flag -I@VMODROOT/vglyph
+#flag -I@VMODROOT
 #flag -I@VEXEROOT/thirdparty/freetype/include
 #pkgconfig freetype2
 #pkgconfig harfbuzz
