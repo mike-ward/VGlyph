@@ -1,14 +1,14 @@
 module main
 
 import gg
-import text_render
+import vglyph
 
 struct AppDemo {
 mut:
 	ctx      &gg.Context
-	tr_ctx   &text_render.Context
-	renderer &text_render.Renderer
-	layouts  []text_render.Layout
+	tr_ctx   &vglyph.Context
+	renderer &vglyph.Renderer
+	layouts  []vglyph.Layout
 	mouse_x  f32
 	mouse_y  f32
 }
@@ -38,23 +38,23 @@ fn main() {
 }
 
 fn init(mut app AppDemo) {
-	app.tr_ctx = text_render.new_context() or { panic(err) }
+	app.tr_ctx = vglyph.new_context() or { panic(err) }
 
 	// Pango handles font fallback automatically.
 	// We just ask for a base font and size.
 	// Ensure you have fonts installed that cover these scripts (e.g. Noto Sans).
 	text := 'Hello السلام Verden 🌍 9局て脂済事つまきな政98院 Здравей'
-	app.layouts << app.tr_ctx.layout_text(text, text_render.TextConfig{ font_name: 'Sans 30' }) or {
+	app.layouts << app.tr_ctx.layout_text(text, vglyph.TextConfig{ font_name: 'Sans 30' }) or {
 		panic(err.msg())
 	}
 
 	french := "Voix ambiguë d'un cœur qui, au zéphyr, préfère les jattes de kiwis."
-	app.layouts << app.tr_ctx.layout_text(french, text_render.TextConfig{ font_name: 'Serif 30' }) or {
+	app.layouts << app.tr_ctx.layout_text(french, vglyph.TextConfig{ font_name: 'Serif 30' }) or {
 		panic(err.msg())
 	}
 
 	korean := '오늘 외출할 거예요. 일요일 아홉시 반 아침이에요. 지금 막 일어났어요.'
-	app.layouts << app.tr_ctx.layout_text(korean, text_render.TextConfig{ font_name: 'Sans 30' }) or {
+	app.layouts << app.tr_ctx.layout_text(korean, vglyph.TextConfig{ font_name: 'Sans 30' }) or {
 		panic(err.msg())
 	}
 
@@ -64,7 +64,7 @@ fn init(mut app AppDemo) {
 		'Pango handles the line breaking, and we can also align the text to the center or right. ' +
 		'This ensures that our UI elements rendered with this engine can accommodate variable length content gracefully.'
 
-	app.layouts << app.tr_ctx.layout_text(long_text, text_render.TextConfig{
+	app.layouts << app.tr_ctx.layout_text(long_text, vglyph.TextConfig{
 		font_name: 'Sans 20'
 		width:     400
 		align:     .center
@@ -74,14 +74,14 @@ fn init(mut app AppDemo) {
 	markup_text :=
 		'<span foreground="blue" size="x-large">Large blue text</span> <u>underline</u> ' +
 		'<b>bold text</b> <span background="blue">highlighter</span> <i>italics</i> <s>strikethrough</s>'
-	app.layouts << app.tr_ctx.layout_text(markup_text, text_render.TextConfig{
+	app.layouts << app.tr_ctx.layout_text(markup_text, vglyph.TextConfig{
 		font_name:  'Sans 30'
 		use_markup: true
 		width:      800
 		align:      .left
 	}) or { panic(err.msg()) }
 
-	app.renderer = text_render.new_renderer(mut app.ctx)
+	app.renderer = vglyph.new_renderer(mut app.ctx)
 }
 
 fn frame(mut app AppDemo) {

@@ -1,4 +1,4 @@
-module text_render
+module vglyph
 
 import gg
 import time

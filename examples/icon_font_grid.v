@@ -1,19 +1,19 @@
 module main
 
 import gg
-import text_render
+import vglyph
 
 struct AppIconGrid {
 mut:
-	ctx &gg.Context             = unsafe { nil }
-	ts  &text_render.TextSystem = unsafe { nil }
+	ctx &gg.Context        = unsafe { nil }
+	ts  &vglyph.TextSystem = unsafe { nil }
 }
 
 fn frame(mut app AppIconGrid) {
 	app.ctx.begin()
 	app.ctx.draw_rect_filled(0, 0, 800, 600, gg.white)
 
-	cfg := text_render.TextConfig{
+	cfg := vglyph.TextConfig{
 		font_name: 'feathericon 24'
 		color:     gg.black
 	}
@@ -41,7 +41,7 @@ fn frame(mut app AppIconGrid) {
 }
 
 fn init(mut app AppIconGrid) {
-	app.ts = text_render.new_text_system(mut app.ctx) or { panic(err) }
+	app.ts = vglyph.new_text_system(mut app.ctx) or { panic(err) }
 
 	// Load the icon font
 	// Assume running from project root

@@ -1,6 +1,6 @@
-# Text Render
+# VGlyph
 
-### *This is a work in progress and is not production ready!*
+### *This is a work in progress and is not production-ready!*
 
 A high-performance, feature-rich text rendering engine for the V programming language, built on top
 of **Pango**, **FreeType**, and **Sokol**.
@@ -58,19 +58,19 @@ graph TD
 
 ### Key Components
 
-1.  **Context (`text_render.Context`)**: 
+1.  **Context (`vglyph.Context`)**: 
     - Manages the connection to Pango and FontConfig.
     - Responsible for the heavy lifting of text shaping, wrapping, and laying out.
     - Produces a `Layout` object.
 
-2.  **Layout (`text_render.Layout`)**:
+2.  **Layout (`vglyph.Layout`)**:
     - A lightweight, pure V struct containing all necessary information to draw text or perform hit
       tests.
     - Stores text as "Runs" (`Item`), which contain shaped "Glyphs".
     - Stores "Baked" Character Rectangles (`CharRect`) for O(1) or O(N) hit testing without querying
       Pango again.
 
-3.  **Renderer (`text_render.Renderer`)**:
+3.  **Renderer (`vglyph.Renderer`)**:
     - Manages the `GlyphAtlas` (dynamic texture packing) and Glyph Cache.
     - Renders `Layout` objects to the screen using Sokol `gg`.
     - Handles color tinting and texture coordinates.
@@ -149,23 +149,23 @@ For most use cases, use the high-level `TextSystem` API which handles layout cac
 automatically.
 
 ```okfmt
-import text_render
+import vglyph
 import gg
 
 struct App {
 mut:
 	ctx &gg.Context
-	ts  &text_render.TextSystem
+	ts  &vglyph.TextSystem
 }
 
 fn init(mut app App) {
 	// Initialize TextSystem with your gg.Context
-	app.ts = text_render.new_text_system(mut app.ctx) or { panic(err) }
+	app.ts = vglyph.new_text_system(mut app.ctx) or { panic(err) }
 }
 
 fn frame(mut app App) {
 	// Draw text directly - layout is cached internally
-	app.ts.draw_text(100, 100, 'Hello High-Level API!', text_render.TextConfig{
+	app.ts.draw_text(100, 100, 'Hello High-Level API!', vglyph.TextConfig{
 		font_name: 'Sans 20'
 		align:     .center
 	}) or { panic(err) }
@@ -192,7 +192,7 @@ app.ts.add_font_file('assets/icons.ttf')
 
 // 2. Use the Family Name (e.g. "Feather")
 // Use unicode escape sequences for icons
-app.ts.draw_text(50, 50, '\uF100', text_render.TextConfig{
+app.ts.draw_text(50, 50, '\uF100', vglyph.TextConfig{
     font_name: 'Feather 24'
 })
 ```
@@ -202,11 +202,11 @@ app.ts.draw_text(50, 50, '\uF100', text_render.TextConfig{
 
 ```okfmt
 // 1. Initialize
-mut tr_ctx := text_render.new_context()!
-mut renderer := text_render.new_renderer(mut gg_ctx)
+mut tr_ctx := vglyph.new_context()!
+mut renderer := vglyph.new_renderer(mut gg_ctx)
 
 // 2. Layout Text (Expensive - do this when text changes)
-cfg := text_render.TextConfig
+cfg := vglyph.TextConfig
 {
 	font_name: 'Sans 20'
 	width:     400

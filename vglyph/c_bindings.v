@@ -1,6 +1,6 @@
-module text_render
+module vglyph
 
-#flag -I@VMODROOT/text_render
+#flag -I@VMODROOT/vglyph
 #flag -I@VEXEROOT/thirdparty/freetype/include
 #pkgconfig freetype2
 #pkgconfig harfbuzz

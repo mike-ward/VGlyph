@@ -1,12 +1,12 @@
 module main
 
 import gg
-import text_render
+import vglyph
 
 struct AppApi {
 mut:
 	ctx &gg.Context
-	ts  &text_render.TextSystem
+	ts  &vglyph.TextSystem
 }
 
 fn main() {
@@ -32,14 +32,14 @@ fn main() {
 fn init(mut app AppApi) {
 	// Initialize the new Text System
 	// casting app.ctx to mutable for the API
-	app.ts = text_render.new_text_system(mut app.ctx) or { panic(err) }
+	app.ts = vglyph.new_text_system(mut app.ctx) or { panic(err) }
 }
 
 fn frame(mut app AppApi) {
 	app.ctx.begin()
 
 	// 1. Simple text drawing
-	cfg := text_render.TextConfig{
+	cfg := vglyph.TextConfig{
 		font_name: 'Sans 24'
 		width:     0 // no wrapping
 	}
@@ -47,7 +47,7 @@ fn frame(mut app AppApi) {
 
 	// 2. Text with wrapping and measurement
 	long_text := 'This usage pattern is much cleaner. The system handles layout caching internally.'
-	wrap_cfg := text_render.TextConfig{
+	wrap_cfg := vglyph.TextConfig{
 		font_name: 'Impact 20'
 		width:     300
 		wrap:      .word
@@ -63,7 +63,7 @@ fn frame(mut app AppApi) {
 
 	// 3. Colored/Markup text
 	markup := '<span foreground="red">Red</span> and <span foreground="blue">Blue</span> text mixed together.'
-	markup_cfg := text_render.TextConfig{
+	markup_cfg := vglyph.TextConfig{
 		font_name:  'Monospace 18'
 		use_markup: true
 	}

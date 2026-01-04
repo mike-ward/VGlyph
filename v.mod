@@ -1,5 +1,5 @@
 Module {
-	name: 'text_render'
+	name: 'vglyph'
 	description: 'Text rendering engine using FreeType and HarfBuzz'
 	version: '0.1.0'
 	license: 'MIT'

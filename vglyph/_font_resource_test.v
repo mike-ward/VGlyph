@@ -1,4 +1,4 @@
-module text_render
+module vglyph
 
 fn test_add_font_file() {
 	// We test Context directly to avoid initializing the full graphics subsystem (gg/sokol)
