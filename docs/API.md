@@ -145,6 +145,17 @@ Performs the "Shaping" process.
   Store the result if using `Context` directly.
 
 ---
+---
+`fn (mut ctx Context) resolve_font_name(font_desc_str string) string`
+
+Returns the actual font family name that Pango resolves for the given font
+description string.
+- **Parameters**:
+    - `font_desc_str`: The font description name (e.g. `'Arial'`, `'Sans Bold'`).
+- **Returns**: The resolved family name (e.g. `'Arial'` or `'Verdana'` if fallback happened).
+- **Usage**: Useful for debugging system font loading and fallback behavior.
+
+---
 
 ## Layout (Struct)
 
@@ -206,6 +217,3 @@ Uploads the texture atlas. Same requirement as `TextSystem.commit()`.
 
 For details on loading and using fonts, please refer to the
 [Guides](./GUIDES.md#font-management).
-
-Key methods involved:
-- [`TextSystem.add_font_file`](#add_font_file)

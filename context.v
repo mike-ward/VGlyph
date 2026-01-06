@@ -110,3 +110,27 @@ pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
 
 	return f32(ascent + descent) / f32(pango_scale)
 }
+
+// resolve_font_name returns the actual font family name that Pango resolves
+// for the given font description string. Useful for debugging system font loading.
+pub fn (mut ctx Context) resolve_font_name(font_desc_str string) string {
+	desc := C.pango_font_description_from_string(font_desc_str.str)
+	if desc == unsafe { nil } {
+		return 'Error: Invalid font description'
+	}
+	defer { C.pango_font_description_free(desc) }
+
+	font := C.pango_context_load_font(ctx.pango_context, desc)
+	if font == unsafe { nil } {
+		return 'Error: Could not load font'
+	}
+	defer { C.g_object_unref(font) }
+
+	// Get the FT_Face from the Pango font (specific to pangoft2 backend)
+	face := C.pango_ft2_font_get_face(font)
+	if face == unsafe { nil } {
+		return 'Error: Could not get FT_Face'
+	}
+
+	return unsafe { cstring_to_vstring(face.family_name) }
+}
