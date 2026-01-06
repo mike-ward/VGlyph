@@ -157,7 +157,18 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec) !Bitmap {
 				}
 			}
 
-			target_size := int(ft_face.size.metrics.y_ppem)
+			// Calculate target size (in pixels)
+			// Use the font's ascender height if available. This ensures that static bitmaps (like emojis)
+			// are scaled to match the visual cap-height/ascender of the text, rather than the full
+			// line height (which includes descenders and gap).
+			y_ppem := int(ft_face.size.metrics.y_ppem)
+			ascender := int(ft_face.size.metrics.ascender) >> 6 // 26.6 fixed point to pixels
+
+			target_size := if ascender > 0 && ascender < y_ppem {
+				ascender
+			} else {
+				y_ppem
+			}
 			needs_scaling := bmp.rows != target_size
 			if needs_scaling && target_size > 0 {
 				scale := f32(target_size) / f32(height)

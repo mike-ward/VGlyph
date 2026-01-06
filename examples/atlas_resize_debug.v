@@ -3,7 +3,7 @@ module main
 import vglyph
 import gg
 
-struct App {
+struct AtlasApp {
 mut:
 	ctx      &gg.Context      = unsafe { nil }
 	renderer &vglyph.Renderer = unsafe { nil }
@@ -11,7 +11,7 @@ mut:
 
 fn main() {
 	println('Starting Atlas Resize Debug...')
-	mut app := &App{}
+	mut app := &AtlasApp{}
 	app.ctx = gg.new_context(
 		bg_color:     gg.white
 		width:        800
@@ -23,7 +23,7 @@ fn main() {
 	app.ctx.run()
 }
 
-fn init(mut app App) {
+fn init(mut app AtlasApp) {
 	println('Context initialized. Creating renderer...')
 	// Start with a very small atlas to force resize shortly
 	// 128x128 atlas.
