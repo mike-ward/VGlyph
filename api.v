@@ -108,6 +108,13 @@ pub fn (mut ts TextSystem) text_height(text string, cfg TextConfig) !f32 {
 	return ts.renderer.max_visual_height(layout)
 }
 
+// font_height returns the true height of the font (ascent + descent) in pixels.
+// This is the vertical space the font claims, including descenders, regardless
+// of the actual text content. [TextConfig](#TextConfig)
+pub fn (mut ts TextSystem) font_height(cfg TextConfig) f32 {
+	return ts.ctx.font_height(cfg)
+}
+
 // commit should be called at the end of the frame to upload the texture atlas.
 pub fn (mut ts TextSystem) commit() {
 	ts.renderer.commit()

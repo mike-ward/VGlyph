@@ -81,3 +81,32 @@ pub fn (mut ctx Context) add_font_file(path string) bool {
 	res := C.FcConfigAppFontAddFile(config, &char(path.str))
 	return res == 1
 }
+
+// font_height returns the total visual height (ascent + descent) of the font
+// described by cfg.
+pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
+	desc := C.pango_font_description_from_string(cfg.font_name.str)
+	if desc == unsafe { nil } {
+		return 0
+	}
+	defer { C.pango_font_description_free(desc) }
+
+	// Get metrics
+	language := C.pango_language_get_default()
+	font := C.pango_context_load_font(ctx.pango_context, desc)
+	if font == unsafe { nil } {
+		return 0
+	}
+	defer { C.g_object_unref(font) }
+
+	metrics := C.pango_font_get_metrics(font, language)
+	if metrics == unsafe { nil } {
+		return 0
+	}
+	defer { C.pango_font_metrics_unref(metrics) }
+
+	ascent := C.pango_font_metrics_get_ascent(metrics)
+	descent := C.pango_font_metrics_get_descent(metrics)
+
+	return f32(ascent + descent) / f32(pango_scale)
+}
