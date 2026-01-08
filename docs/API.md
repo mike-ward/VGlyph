@@ -31,7 +31,7 @@ and an internal layout cache to optimize performance.
 Creates a new `TextSystem` using the default 1024x1024 glyph atlas.
 
 - **Parameters**:
-  - `gg_ctx`: A mutable reference to your `gg.Context`.
+    - `gg_ctx`: A mutable reference to your `gg.Context`.
 - **Returns**: A pointer to the new `TextSystem` or an error.
 
 ---
@@ -112,17 +112,6 @@ description string.
 - **Usage**: Useful for debugging system font loading and fallback behavior.
 
 ---
----
-`fn (mut ts TextSystem) set_text_quality(config TextQualityConfig)`
-
-Configures rendering quality settings such as Gamma Correction and LCD Hinting.
-Applying this immediately clears the internal glyph cache, so it is best called
-during initialization.
-
-- **Parameters**:
-    - `config`: A [TextQualityConfig](#textqualityconfig) struct.
-
----
 
 ## TextConfig
 
@@ -130,17 +119,17 @@ during initialization.
 
 Configuration struct for defining how text should be laid out and styled.
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `font_name` | `string` | - | Pango font description (e.g. `'Sans Bold 12'`). |
-| `width` | `int` | `-1` | Wrapping width in pixels. `-1` denotes no wrapping. |
-| `align` | `Alignment` | `.left` | Horizontal alignment (`.left`, `.center`, `.right`). |
-| `wrap` | `WrapMode` | `.word` | Wrapping strategy (`.word`, `.char`, `.word_char`). |
-| `use_markup` | `bool` | `false` | Enable [Pango Markup](./GUIDES.md#rich-text-markup). |
-| `color` | `gg.Color` | `black` | Default text color. |
-| `bg_color` | `gg.Color` | `transparent`| Background color (highlight). |
-| `underline` | `bool` | `false` | Draw a single underline. |
-| `strikethrough`| `bool` | `false` | Draw a strikethrough line. |
+| Field           | Type        | Default       | Description                                          |
+|:----------------|:------------|:--------------|:-----------------------------------------------------|
+| `font_name`     | `string`    | -             | Pango font description (e.g. `'Sans Bold 12'`).      |
+| `width`         | `int`       | `-1`          | Wrapping width in pixels. `-1` denotes no wrapping.  |
+| `align`         | `Alignment` | `.left`       | Horizontal alignment (`.left`, `.center`, `.right`). |
+| `wrap`          | `WrapMode`  | `.word`       | Wrapping strategy (`.word`, `.char`, `.word_char`).  |
+| `use_markup`    | `bool`      | `false`       | Enable [Pango Markup](./GUIDES.md#rich-text-markup). |
+| `color`         | `gg.Color`  | `black`       | Default text color.                                  |
+| `bg_color`      | `gg.Color`  | `transparent` | Background color (highlight).                        |
+| `underline`     | `bool`      | `false`       | Draw a single underline.                             |
+| `strikethrough` | `bool`      | `false`       | Draw a strikethrough line.                           |
 
 ---
 
@@ -150,11 +139,11 @@ Configuration struct for defining how text should be laid out and styled.
 
 Configuration for the rasterization and blending of glyphs.
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `gamma` | `f64` | `1.0` | (Unused Legacy?) Use `alpha_exponential`. |
-| `alpha_exponential` | `f64` | `0.4545` | Gamma correction exponent for alpha blending. Lower values = Lighter text. Standard is `0.4545` (1.0/2.2). |
-| `use_lcd` | `bool` | `false` | Enable LCD (Sub-pixel) hinting. Flattens to grayscale but preserves horizontal definition for sharper text. |
+| Field               | Type   | Default  | Description                                                                                                 |
+|:--------------------|:-------|:---------|:------------------------------------------------------------------------------------------------------------|
+| `gamma`             | `f64`  | `1.0`    | (Unused Legacy?) Use `alpha_exponential`.                                                                   |
+| `alpha_exponential` | `f64`  | `0.4545` | Gamma correction exponent for alpha blending. Lower values = Lighter text. Standard is `0.4545` (1.0/2.2).  |
+| `use_lcd`           | `bool` | `false`  | Enable LCD (Sub-pixel) hinting. Flattens to grayscale but preserves horizontal definition for sharper text. |
 
 ---
 
@@ -178,6 +167,7 @@ Creates a new Pango context.
 `fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout`
 
 Performs the "Shaping" process.
+
 - Converts text into glyphs, positions them, and wraps lines.
 - **Expensive Operation**: Should not be called every frame for the same text.
   Store the result if using `Context` directly.
@@ -188,6 +178,7 @@ Performs the "Shaping" process.
 
 Returns the actual font family name that Pango resolves for the given font
 description string.
+
 - **Parameters**:
     - `font_desc_str`: The font description name (e.g. `'Arial'`, `'Sans Bold'`).
 - **Returns**: The resolved family name (e.g. `'Arial'` or `'Verdana'` if fallback happened).
@@ -203,6 +194,7 @@ A pure V struct containing the result of the shaping process. It is "baked" and
 decoupled from Pango.
 
 ### Fields
+
 - `items`: List of `Item` (runs of text with same font/style).
 - `char_rects`: List of pre-calculated bounding boxes for every character.
 
