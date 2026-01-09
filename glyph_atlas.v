@@ -160,7 +160,8 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 
 			// Calculate target size (in pixels)
 			// Use explicitly requested target_height if available.
-			// Otherwise use metrics (though metrics are often untrustworthy for bitmap fonts like Noto Color Emoji which report native size).
+			// Otherwise use metrics (though metrics are often untrustworthy
+			// for bitmap fonts like Noto Color Emoji which report native size).
 
 			y_ppem := int(ft_face.size.metrics.y_ppem)
 			ascender := int(ft_face.size.metrics.ascender) >> 6 // 26.6 fixed point to pixels

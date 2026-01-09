@@ -92,7 +92,7 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 
 			cg := renderer.cache[key] or {
 				// Calculate target height for this glyph run
-				target_h := int(item.ascent + item.descent)
+				target_h := int(item.ascent)
 				cached_glyph := renderer.load_glyph(item.ft_face, glyph.index, target_h) or {
 					CachedGlyph{} // fallback blank glyph
 				}
