@@ -440,6 +440,7 @@ pub struct C.PangoFontMetrics {}
 
 // Global Pango Constants
 pub const pango_scale = 1024
+pub const pango_glyph_unknown_flag = 0x10000000
 
 // Functions
 
@@ -541,3 +542,6 @@ fn C.pango_attr_strikethrough_new(bool) &C.PangoAttribute
 fn C.FcInitLoadConfigAndFonts() &C.FcConfig
 fn C.FcConfigGetCurrent() &C.FcConfig
 fn C.FcConfigAppFontAddFile(config &C.FcConfig, file &char) C.FcBool
+
+// PangoFc
+fn C.pango_fc_font_map_config_changed(voidptr)

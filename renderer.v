@@ -80,6 +80,14 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 		}
 
 		for glyph in item.glyphs {
+			// Check for unknown glyph flag
+			if (glyph.index & pango_glyph_unknown_flag) != 0 {
+				// Handle unknown glyph (e.g. skip or render box)
+				// For now, we skip to avoid FT_Load_Glyph errors.
+				// We could insert a "tofu" glyph here if we had one cached.
+				continue
+			}
+
 			key := font_id ^ (u64(glyph.index) << 32)
 
 			cg := renderer.cache[key] or {

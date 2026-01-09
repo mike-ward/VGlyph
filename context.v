@@ -79,7 +79,11 @@ pub fn (mut ctx Context) add_font_file(path string) bool {
 	}
 
 	res := C.FcConfigAppFontAddFile(config, &char(path.str))
-	return res == 1
+	if res == 1 {
+		C.pango_fc_font_map_config_changed(ctx.pango_font_map)
+		return true
+	}
+	return false
 }
 
 // font_height returns the total visual height (ascent + descent) of the font
