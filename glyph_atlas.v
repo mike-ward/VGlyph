@@ -179,7 +179,7 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 				new_w := int(f32(width) * scale)
 				new_h := int(f32(height) * scale)
 
-				data = scale_bitmap_nn(data, width, height, new_w, new_h)
+				data = scale_bitmap_bicubic(data, width, height, new_w, new_h)
 				width = new_w
 				height = new_h
 			}
@@ -198,23 +198,9 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 	}
 }
 
-// Scale RGBA bitmap using nearest-neighbor
-pub fn scale_bitmap_nn(src []u8, src_w int, src_h int, dst_w int, dst_h int) []u8 {
-	mut dst := []u8{len: dst_w * dst_h * 4, init: 0}
-	for y in 0 .. dst_h {
-		for x in 0 .. dst_w {
-			src_x := int(f32(x) * f32(src_w) / f32(dst_w))
-			src_y := int(f32(y) * f32(src_h) / f32(dst_h))
-			src_idx := (src_y * src_w + src_x) * 4
-			dst_idx := (y * dst_w + x) * 4
-			dst[dst_idx + 0] = src[src_idx + 0]
-			dst[dst_idx + 1] = src[src_idx + 1]
-			dst[dst_idx + 2] = src[src_idx + 2]
-			dst[dst_idx + 3] = src[src_idx + 3]
-		}
-	}
-	return dst
-}
+// cubic_hermite calculates the interpolated value using the Catmull-Rom spline.
+// p1 is the value at t=0, p2 is the value at t=1.
+// p0 and p3 are the surrounding points.
 
 // insert_bitmap places a bitmap into the atlas using a simple specialized
 // shelf-packing algorithm.
