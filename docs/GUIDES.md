@@ -98,6 +98,53 @@ app.ts.draw_text(x, y, icon_code, vglyph.TextConfig{
 
 ---
 
+## Advanced Typography
+
+### Tab Stops
+
+By default, tab characters (`\t`) advance to the next 8-space multiple. You can
+customize this behavior by providing a list of tab stops (in pixels) to create
+perfectly aligned tables.
+
+```okfmt
+cfg := vglyph.TextConfig{
+    font_name: 'Mono 16',
+    // Align columns at 100px and 250px
+    tabs: [100, 250]
+}
+
+// "Name" starts at 0, "Age" aligns to 100px, "Role" aligns to 250px
+header := 'Name\tAge\tRole'
+data   := 'Alice\t28\tEngineer'
+```
+
+### OpenType Features
+
+You can enable advanced OpenType features (like small caps, old-style numerals,
+or stylistic sets) using the `opentype_features` map.
+
+Common Features:
+- `smcp`: Small Capitals
+- `onum`: Old-style Numerals (text figures)
+- `tnum`: Tabular Numerals (monospaced numbers, good for tables)
+- `liga`: Standard Ligatures (usually on by default)
+- `dlig`: Discretionary Ligatures
+
+```okfmt
+cfg := vglyph.TextConfig{
+    font_name: 'Serif 18',
+    opentype_features: {
+        'smcp': 1, // Enable small caps
+        'onum': 1  // Enable old-style figures
+    }
+}
+
+app.ts.draw_text(x, y, 'The year is 2024', cfg)! 
+// Displays "THE YEAR IS 2024" (in small caps) with old-style numbers.
+```
+
+---
+
 ## Performance Best Practices
 
 ### 1. Cache Your Layouts (Automatic)
@@ -127,4 +174,3 @@ up. You generally do not need to manage this manually.
 Exceptions where you might need `new_text_system_atlas_size`:
 - **Massive Glyphs**: If a single glyph is larger than the default atlas size
   (e.g., > 1024px wide), you must initialize with a larger size.
-

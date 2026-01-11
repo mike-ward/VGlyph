@@ -291,6 +291,9 @@ pub:
 }
 
 @[typedef]
+pub struct C.PangoTabArray {}
+
+@[typedef]
 pub struct C.PangoAttrList {}
 
 // Pango Structs with accessible fields
@@ -400,6 +403,7 @@ pub enum PangoAttrType {
 	pango_attr_background    = 10
 	pango_attr_underline     = 11
 	pango_attr_strikethrough = 12
+	pango_attr_font_features = 25
 }
 
 pub enum PangoUnderline {
@@ -513,6 +517,10 @@ pub enum PangoAlignment {
 	pango_align_right  = 2
 }
 
+pub enum PangoTabAlign {
+	pango_tab_left = 0
+}
+
 pub enum PangoWrapMode {
 	pango_wrap_word      = 0
 	pango_wrap_char      = 1
@@ -534,6 +542,10 @@ fn C.pango_layout_set_wrap(&C.PangoLayout, PangoWrapMode)
 fn C.pango_layout_set_ellipsize(&C.PangoLayout, PangoEllipsizeMode)
 fn C.pango_layout_get_width(&C.PangoLayout) int
 fn C.pango_layout_get_height(&C.PangoLayout) int
+fn C.pango_layout_set_tabs(&C.PangoLayout, &C.PangoTabArray)
+fn C.pango_tab_array_new(int, bool) &C.PangoTabArray
+fn C.pango_tab_array_free(&C.PangoTabArray)
+fn C.pango_tab_array_set_tab(&C.PangoTabArray, int, PangoTabAlign, int)
 
 // Pango Iterator Extended
 fn C.pango_layout_iter_get_run_extents(&C.PangoLayoutIter, &C.PangoRectangle, &C.PangoRectangle)
@@ -552,6 +564,7 @@ fn C.pango_attr_foreground_new(u16, u16, u16) &C.PangoAttribute
 fn C.pango_attr_background_new(u16, u16, u16) &C.PangoAttribute
 fn C.pango_attr_underline_new(PangoUnderline) &C.PangoAttribute
 fn C.pango_attr_strikethrough_new(bool) &C.PangoAttribute
+fn C.pango_attr_font_features_new(&char) &C.PangoAttribute
 
 // FontConfig
 fn C.FcInitLoadConfigAndFonts() &C.FcConfig

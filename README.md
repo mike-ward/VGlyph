@@ -23,6 +23,8 @@ complex scripts, and rich text markup—while remaining easy to use.
 
 - **Complex Layout**: Proper support for Arabic, Hebrew, and advanced typography
   via Pango.
+- **Advanced Typography**: Support for OpenType features (small caps, old-style
+  nums) and custom tab stops.
 - **Rich Text**: Use `<span>` tags for colors, fonts, and styles within a single
   string.
 - **High Performance**: Automatic layout caching and batched GPU rendering.

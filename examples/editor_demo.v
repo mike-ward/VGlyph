@@ -6,7 +6,7 @@ import vglyph
 const window_width = 800
 const window_height = 600
 
-struct App {
+struct EditorApp {
 mut:
 	gg &gg.Context
 	ts &vglyph.TextSystem
@@ -21,7 +21,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
+	mut app := &EditorApp{
 		gg:           unsafe { nil }
 		ts:           unsafe { nil }
 		text:         'Hello VGlyph Editor!\n\nThis is a demo of the new cursor positioning and selection logic.\n\nTry clicking anywhere to move the red cursor.\nClick and drag to select text (blue highlight).\n\nIt handles:\n- Multiline text\n- Variable width fonts\n- Empty lines\n- Margins and padding'
@@ -42,7 +42,7 @@ fn main() {
 	app.gg.run()
 }
 
-fn init(mut app App) {
+fn init(mut app EditorApp) {
 	app.ts = vglyph.new_text_system(mut app.gg) or { panic(err) }
 
 	app.cfg = vglyph.TextConfig{
@@ -58,7 +58,7 @@ fn init(mut app App) {
 	app.layout = app.ts.layout_text(app.text, app.cfg) or { panic(err) }
 }
 
-fn event(e &gg.Event, mut app App) {
+fn event(e &gg.Event, mut app EditorApp) {
 	// Offset for rendering (x=50, y=50)
 	offset_x := f32(50)
 	offset_y := f32(50)
@@ -89,7 +89,7 @@ fn event(e &gg.Event, mut app App) {
 	}
 }
 
-fn frame(mut app App) {
+fn frame(mut app EditorApp) {
 	app.gg.begin()
 
 	// Draw Text

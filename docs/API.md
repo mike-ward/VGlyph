@@ -7,7 +7,6 @@ library.
 
 - [TextSystem](#textsystem) - High-level API for easy rendering.
 - [TextConfig](#textconfig) - Configuration for styling/layout.
-- [TextQualityConfig](#textqualityconfig) - Configuration for rendering quality.
 - [Context](#context-struct) - Low-level text layout engine.
 - [Layout](#layout-struct) - Result of text shaping.
 - [Renderer](#renderer-struct) - Low-level rendering engine.
@@ -87,6 +86,11 @@ text content.
 `draw_text` calls). Uploads the modified glyph atlas texture to the GPU. If
 omitted, new characters will appear as empty rectangles.
 
+`fn (ts &TextSystem) get_atlas_image() gg.Image`
+
+Returns the underlying `gg.Image` of the glyph atlas. Useful for debugging or
+custom rendering effects.
+
 ---
 ---
 `fn (mut ts TextSystem) add_font_file(path string) bool`
@@ -128,24 +132,11 @@ Configuration struct for defining how text should be laid out and styled.
 | `use_markup`    | `bool`      | `false`       | Enable [Pango Markup](./GUIDES.md#rich-text-markup). |
 | `color`         | `gg.Color`  | `black`       | Default text color.                                  |
 | `bg_color`      | `gg.Color`  | `transparent` | Background color (highlight).                        |
-| `underline`     | `bool`      | `false`       | Draw a single underline.                             |
-| `strikethrough` | `bool`      | `false`       | Draw a strikethrough line.                           |
+| `underline`       | `bool`             | `false`       | Draw a single underline.                             |
+| `strikethrough`   | `bool`             | `false`       | Draw a strikethrough line.                           |
+| `tabs`            | `[]int`            | `[]`          | Custom tab stops in pixels.                          |
+| `opentype_features`| `map[string]int`  | `{}`          | OpenType feature tags (e.g., `{'smcp': 1}`).         |
 
----
-
-## TextQualityConfig
-
-`struct TextQualityConfig`
-
-Configuration for the rasterization and blending of glyphs.
-
-| Field               | Type   | Default  | Description                                                                                                 |
-|:--------------------|:-------|:---------|:------------------------------------------------------------------------------------------------------------|
-| `gamma`             | `f64`  | `1.0`    | (Unused Legacy?) Use `alpha_exponential`.                                                                   |
-| `alpha_exponential` | `f64`  | `0.4545` | Gamma correction exponent for alpha blending. Lower values = Lighter text. Standard is `0.4545` (1.0/2.2).  |
-| `use_lcd`           | `bool` | `false`  | Enable LCD (Sub-pixel) hinting. Flattens to grayscale but preserves horizontal definition for sharper text. |
-
----
 
 ## Context (Struct)
 
@@ -212,6 +203,21 @@ Returns the byte index of the character at the given local coordinates. Returns
 `fn (l Layout) hit_test_rect(x f32, y f32) ?gg.Rect`
 
 Returns the bounding box (`gg.Rect`) of the character at the given coordinates.
+
+---
+---
+`fn (l Layout) get_closest_offset(x f32, y f32) int`
+
+Returns the byte index of the character closest to the given coordinates. Unlike
+`hit_test`, this always returns a valid index (nearest character), making it
+ideal for handling cursor placement when clicking outside exact character bounds.
+
+---
+---
+`fn (l Layout) get_selection_rects(start int, end int) []gg.Rect`
+
+Returns a list of rectangles covering the text range `[start, end)`. Useful for
+drawing selection highlights. Handles multi-line selections correctly.
 
 ---
 

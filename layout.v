@@ -32,7 +32,11 @@ pub:
 	width    f64
 	x        f64 // Run position relative to layout (x)
 	y        f64 // Run position relative to layout (baseline y)
-	color    gg.Color = gg.black
+
+	start_index int
+	length      int
+
+	color gg.Color = gg.black
 
 	// Text Decoration
 	has_underline           bool
@@ -123,6 +127,10 @@ pub:
 	bg_color      gg.Color = gg.Color{0, 0, 0, 0}
 	underline     bool
 	strikethrough bool
+
+	// Advanced Typography
+	tabs              []int          // Tab stops in pixels
+	opentype_features map[string]int // e.g. {"smcp": 1, "tnum": 1}
 }
 
 // layout_text shapes, wraps, and arranges text using Pango.
@@ -278,8 +286,37 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 			C.pango_attr_list_insert(attr_list, s_attr)
 		}
 
+		// OpenType Features
+		if cfg.opentype_features.len > 0 {
+			mut features_str := ''
+			mut first := true
+			for k, v in cfg.opentype_features {
+				if !first {
+					features_str += ', '
+				}
+				features_str += '${k}=${v}'
+				first = false
+			}
+			mut f_attr := C.pango_attr_font_features_new(&char(features_str.str))
+			f_attr.start_index = 0
+			f_attr.end_index = u32(C.G_MAXUINT)
+			C.pango_attr_list_insert(attr_list, f_attr)
+		}
+
 		C.pango_layout_set_attributes(layout, attr_list)
 		C.pango_attr_list_unref(attr_list)
+	}
+
+	// Apply Tabs
+	if cfg.tabs.len > 0 {
+		tab_array := C.pango_tab_array_new(cfg.tabs.len, 0)
+		for i, pos_px in cfg.tabs {
+			// Pango tabs are in Pango units
+			pos_pango := int(pos_px * pango_scale)
+			C.pango_tab_array_set_tab(tab_array, i, .pango_tab_left, pos_pango)
+		}
+		C.pango_layout_set_tabs(layout, tab_array)
+		C.pango_tab_array_free(tab_array)
 	}
 
 	return layout
@@ -469,6 +506,8 @@ fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string) Item
 			width:                   width
 			x:                       run_x
 			y:                       run_y
+			start_index:             start_index
+			length:                  length
 			color:                   attrs.color
 			has_underline:           attrs.has_underline
 			has_strikethrough:       attrs.has_strikethrough
@@ -489,6 +528,8 @@ fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string) Item
 			width:                   width
 			x:                       run_x
 			y:                       run_y
+			start_index:             start_index
+			length:                  length
 			color:                   attrs.color
 			has_underline:           attrs.has_underline
 			has_strikethrough:       attrs.has_strikethrough
@@ -774,6 +815,19 @@ pub fn (l Layout) get_selection_rects(start int, end int) []gg.Rect {
 		}
 	}
 	return rects
+}
+
+// get_font_name_at_index returns the family name of the font used to render
+// the character at the given byte index.
+pub fn (l Layout) get_font_name_at_index(index int) string {
+	for item in l.items {
+		if index >= item.start_index && index < item.start_index + item.length {
+			if item.ft_face != unsafe { nil } {
+				return unsafe { cstring_to_vstring(item.ft_face.family_name) }
+			}
+		}
+	}
+	return 'Unknown'
 }
 
 fn get_abs(v f32) f32 {
