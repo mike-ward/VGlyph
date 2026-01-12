@@ -4,44 +4,32 @@ This document outlines practical recommendations to bring `vglyph`'s rendering q
 set in line with industry-standard text engines like CoreText (macOS), DirectWrite (Windows), and
 modern web browsers.
 
-## 1. Rendering Quality
+## ~~1. Rendering Quality~~
 
 The most immediate "feel" of a text engine comes from its rendering pipeline. `vglyph` currently
 uses standard grayscale antialiasing.
 
-### 1.1 LCD Subpixel Antialiasing
+### ~~1.1 LCD Subpixel Antialiasing~~
 **Priority:** High
 **Impact:** Sharper text on non-Retina displays.
 
 Standard engines use subpixel rendering (exploiting the R, G, B subpixels of LCD screens) to triple
 horizontal resolution.
-- **Current State:** `glyph_atlas.v` loads `FT_PIXEL_MODE_GRAY` (8-bit alpha) and expands it to
-  white + alpha.
-- **Implementation Plan:**
-    1.  **Atlas Update (`glyph_atlas.v`):**
-        -   Modify `ft_bitmap_to_bitmap` to handle `FT_PIXEL_MODE_LCD`.
-        -   Store FreeType's LCD bitmap (3x width) into the R, G, B channels of the atlas texture.
-        -   **Simplified Alpha:** Set Alpha = average(R, G, B) to allow standard alpha blending
-            to work.
-    2.  **Pipeline Update (`renderer.v`):**
-        -   Use `FT_LOAD_TARGET_LCD` in `load_glyph`.
-        -   Adjust texture coordinates for 3x width.
-        -   Use standard `gg` rendering (no custom shader required). This provides "cheap" subpixel
-            AA by exploiting the R/G/B channels of the source texture.
-        -   *Note:* This is an approximation (correct for light-text-on-dark, approximate for
-            dark-text-on-light) but avoids complex shader integration.
+- **Status:** **Implemented (Hybrid Strategy)**
+- **Details:**
+    - High-DPI screens (>= 2.0x) use LCD Subpixel AA for maximum sharpness.
+    - Low-DPI screens (< 2.0x) fallback to Grayscale AA with Gamma Correction to ensure solid weight.
 
-### 1.2 Tunable Gamma Correction / Stem Darkening
+### ~~1.2 Tunable Gamma Correction / Stem Darkening~~
 **Priority:** High
 **Impact:** Matches system font weight perception.
 
 macOS and Windows render fonts with different "weights" due to gamma correction. Standard engines
 allow tuning this or default to a platform-specific value.
-- **Current State:** No explicit gamma correction; linear alpha blending.
-- **Recommendation:** Add a `gamma` float to `Renderer` or `TextConfig`.
-    - Allows users to thicken fonts (e.g., gamma 1.8-2.2) to match macOS style.
-    - Necessary because FreeType's raw rasterization is often perceived as too thin on high-DPI
-      screens without stem darkening.
+- **Status:** **Implemented**
+- **Details:**
+    - Added Gamma Correction (~1.45) to `glyph_atlas.v` for the Grayscale pipeline.
+    - Resolves the "thin" look of raw FreeType rendering on standard displays.
 
 ### 1.3 Subpixel Positioning
 **Priority:** Medium

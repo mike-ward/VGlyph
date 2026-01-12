@@ -62,9 +62,14 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 	// which usually looks better on screens than FULL hinting (too distorted)
 	// or NO hinting (too blurry).
 	//
-	// Use V constant for FT_LOAD_TARGET_LIGHT because the C macro is complex
-	// and not automatically exposed by V's C-interop.
-	target_flag := ft_load_target_light
+	// Hybrid Strategy:
+	// - High DPI (>= 2.0): User prefers LCD Subpixel look.
+	// - Low DPI (< 2.0): User prefers Grayscale with Gamma Correction.
+	target_flag := if renderer.scale_factor >= 2.0 {
+		ft_load_target_lcd
+	} else {
+		ft_load_target_light
+	}
 	flags := C.FT_LOAD_RENDER | C.FT_LOAD_COLOR | target_flag
 
 	if C.FT_Load_Glyph(ft_face, index, flags) != 0 {
