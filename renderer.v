@@ -167,7 +167,8 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 
 			if item.has_underline {
 				line_x := run_x
-				line_y := run_y + f32(item.underline_offset) // item.underline_offset is (+) for below
+				// item.underline_offset is (+) for below
+				line_y := run_y + f32(item.underline_offset) - f32(item.underline_thickness)
 				line_w := f32(item.width)
 				line_h := f32(item.underline_thickness)
 
@@ -176,7 +177,7 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 
 			if item.has_strikethrough {
 				line_x := run_x
-				line_y := run_y - f32(item.strikethrough_offset)
+				line_y := run_y - f32(item.strikethrough_offset) + f32(item.strikethrough_thickness)
 				line_w := f32(item.width)
 				line_h := f32(item.strikethrough_thickness)
 

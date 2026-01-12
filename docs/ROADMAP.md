@@ -83,7 +83,7 @@ Standard engines support "Attributed Strings"—single text buffers with multipl
 
 ## 3. Advanced Typography
 
-### 3.1 OpenType Features API
+### ~~3.1 OpenType Features API~~
 **Priority:** Medium
 **Impact:** Professional typography (Coding ligatures, Small Caps).
 
@@ -103,7 +103,7 @@ Standard engines support "Attributed Strings"—single text buffers with multipl
 
 ## 4. System Integration
 
-### 4.1 Robust Font Fallback
+### ~~4.1 Robust Font Fallback~~
 **Priority:** High
 **Impact:** Multilingual support.
 
