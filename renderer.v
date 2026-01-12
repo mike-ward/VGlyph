@@ -64,6 +64,9 @@ pub fn (mut renderer Renderer) commit() {
 pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 	// Item.y is BASELINE y. Draw relative to x + item.x, y + item.y.
 
+	// Cleanup old atlas textures from previous frames
+	renderer.atlas.cleanup(renderer.ctx.frame)
+
 	for item in layout.items {
 		// item.ft_face is &C.FT_FaceRec
 		font_id := u64(voidptr(item.ft_face))

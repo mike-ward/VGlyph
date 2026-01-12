@@ -13,6 +13,9 @@ pub mut:
 	cursor_y   int
 	row_height int
 	dirty      bool
+	garbage    []int
+	last_frame u64
+	ctx        &gg.Context
 }
 
 pub struct CachedGlyph {
@@ -49,6 +52,7 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 		image:  img
 		width:  w
 		height: h
+		ctx:    ctx
 	}
 }
 
@@ -277,8 +281,8 @@ pub fn (mut atlas GlyphAtlas) grow(new_height int) {
 
 	// Re-create Sokol image with new size
 	// Note: We're replacing the underlying sokol image entirely.
-	// This might be expensive, but it happens rarely.
-	sg.destroy_image(atlas.image.simg)
+	// We MUST defer destruction because the image might still be bound in the current frame's batch.
+	atlas.garbage << atlas.image.id
 
 	desc := sg.ImageDesc{
 		width:        atlas.width
@@ -287,6 +291,7 @@ pub fn (mut atlas GlyphAtlas) grow(new_height int) {
 		usage:        .dynamic
 	}
 	atlas.image.simg = sg.make_image(&desc)
+	atlas.image.id = atlas.ctx.cache_image(atlas.image)
 	atlas.dirty = true // Force upload
 }
 
@@ -298,5 +303,15 @@ fn copy_bitmap_to_atlas(mut atlas GlyphAtlas, bmp Bitmap, x int, y int) {
 			dst_ptr := &u8(atlas.image.data) + ((y + row) * atlas.width + x) * 4
 			vmemcpy(dst_ptr, src_ptr, row_bytes)
 		}
+	}
+}
+
+pub fn (mut atlas GlyphAtlas) cleanup(frame u64) {
+	if frame > atlas.last_frame {
+		for id in atlas.garbage {
+			atlas.ctx.remove_cached_image_by_idx(id)
+		}
+		atlas.garbage.clear()
+		atlas.last_frame = frame
 	}
 }

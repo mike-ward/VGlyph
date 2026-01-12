@@ -49,6 +49,10 @@ graph TD
     - Dynamically packs grayscale bitmaps of glyphs into a single GPU texture.
     - Uses a "dirty" flag system to batch uploads, ensuring only one
       `sg_update_image` call per frame (sokol requirement).
+    - Supports dynamic resizing (growth). When the atlas fills up, it doubles in
+      height. Old textures are kept alive ("garbage collected") until the start
+      of the next frame to prevent crashing active draw calls in the render
+      pipeline.
 
 ## Technical Nuances & Discrepancies
 
