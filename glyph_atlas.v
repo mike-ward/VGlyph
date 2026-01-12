@@ -3,6 +3,7 @@ module vglyph
 import gg
 import sokol.gfx as sg
 import log
+import math
 
 pub struct GlyphAtlas {
 pub mut:
@@ -61,8 +62,9 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 	// which usually looks better on screens than FULL hinting (too distorted)
 	// or NO hinting (too blurry).
 	//
-	// Use LCD targeting for subpixel AA
-	target_flag := ft_load_target_lcd
+	// Use V constant for FT_LOAD_TARGET_LIGHT because the C macro is complex
+	// and not automatically exposed by V's C-interop.
+	target_flag := ft_load_target_light
 	flags := C.FT_LOAD_RENDER | C.FT_LOAD_COLOR | target_flag
 
 	if C.FT_Load_Glyph(ft_face, index, flags) != 0 {
@@ -111,6 +113,12 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 
 	match bmp.pixel_mode {
 		u8(C.FT_PIXEL_MODE_GRAY) {
+			// Gamma Correction (Enhance stem darkness)
+			// Standard monitor gamma is ~2.2. FreeType renders linearly (coverage).
+			// To make text "heavier" (like macOS), we apply a gamma correction.
+			// Formula: val = val ^ (1.0 / gamma)
+			// Gamma 1.8 is a good middle ground for "Darkening".
+
 			for y in 0 .. height {
 				row := match bmp.pitch >= 0 {
 					true { unsafe { bmp.buffer + y * bmp.pitch } }
@@ -118,11 +126,25 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 				}
 				for x in 0 .. width {
 					val := unsafe { row[x] }
+
+					// Apply simple stem darkening map or calculation
+					// Using integer approximation for speed if possible,
+					// but floating point pow is safer for correctness first.
+					// Let's use a simple lookup-table approach if we could,
+					// but here we'll calc it for clarity and simplicity first.
+					// Actually, let's just use a simple boost:
+					// val = 255 * (val / 255.0) ^ (1.0 / 1.5)
+					// Using 1.4ish for noticeable darkening.
+
+					mut a := f64(val) / 255.0
+					a = math.pow(a, 1.0 / 1.45) // 1.45 gamma factor for darkening
+					final_val := u8(a * 255.0)
+
 					i := (y * width + x) * 4
-					data[i + 0] = 255 // val
-					data[i + 1] = 255 // val
-					data[i + 2] = 255 // val
-					data[i + 3] = val
+					data[i + 0] = 255
+					data[i + 1] = 255
+					data[i + 2] = 255
+					data[i + 3] = final_val
 				}
 			}
 		}
