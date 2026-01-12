@@ -164,6 +164,10 @@ decoupled from Pango.
 
 - `items`: List of `Item` (runs of text with same font/style).
 - `char_rects`: List of pre-calculated bounding boxes for every character.
+- `width`: Logical width of the text layout. (e.g. advance width).
+- `height`: Logical height of the text layout.
+- `visual_width`: Ink/Visual width (actual pixels drawn).
+- `visual_height`: Ink/Visual height (actual pixels drawn).
 
 ### Layout Methods
 

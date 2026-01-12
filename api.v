@@ -69,8 +69,6 @@ pub fn (mut ts TextSystem) draw_text(x f32, y f32, text string, cfg TextConfig) 
 // text_width calculates width (pixels) of text if rendered with config.
 // Useful for layout calculations before rendering. [TextConfig](#TextConfig)
 pub fn (mut ts TextSystem) text_width(text string, cfg TextConfig) !f32 {
-	// For width we need the layout.
-	// Difficult to guess without Pango shaping it.
 	key := ts.get_cache_key(text, cfg)
 
 	if key in ts.cache {
@@ -78,7 +76,7 @@ pub fn (mut ts TextSystem) text_width(text string, cfg TextConfig) !f32 {
 			return error('cache coherency error: key found but access failed')
 		}
 		item.last_access = time.ticks()
-		return ts.get_layout_width(item.layout)
+		return item.layout.width
 	}
 
 	layout := ts.ctx.layout_text(text, cfg) or { return err }
@@ -86,7 +84,7 @@ pub fn (mut ts TextSystem) text_width(text string, cfg TextConfig) !f32 {
 		layout:      layout
 		last_access: time.ticks()
 	}
-	return ts.get_layout_width(layout)
+	return layout.width
 }
 
 // text_height calculates visual height (pixels) of text.
@@ -99,7 +97,7 @@ pub fn (mut ts TextSystem) text_height(text string, cfg TextConfig) !f32 {
 			return error('cache coherency error: key found but access failed')
 		}
 		item.last_access = time.ticks()
-		return ts.renderer.max_visual_height(item.layout)
+		return item.layout.visual_height
 	}
 
 	layout := ts.ctx.layout_text(text, cfg) or { return err }
@@ -107,7 +105,7 @@ pub fn (mut ts TextSystem) text_height(text string, cfg TextConfig) !f32 {
 		layout:      layout
 		last_access: time.ticks()
 	}
-	return ts.renderer.max_visual_height(layout)
+	return layout.visual_height
 }
 
 // font_height returns the true height of the font (ascent + descent) in pixels.
@@ -242,18 +240,4 @@ fn (mut ts TextSystem) prune_cache() {
 			ts.cache.delete(k)
 		}
 	}
-}
-
-fn (ts TextSystem) get_layout_width(layout Layout) f32 {
-	// Layout width is usually the width of the widest line.
-	// Pango layout forces width if wrapping; otherwise it's max/sum of run widths.
-	// `layout.items` has runs.
-	mut max_x := f64(0)
-	for item in layout.items {
-		right := item.x + item.width
-		if right > max_x {
-			max_x = right
-		}
-	}
-	return f32(max_x)
 }

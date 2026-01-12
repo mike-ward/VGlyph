@@ -58,10 +58,24 @@ pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 	char_rects := compute_hit_test_rects(layout, text, ctx.scale_factor)
 	lines := compute_lines(layout, iter, ctx.scale_factor) // Re-use iter logic or new iter
 
+	ink_rect := C.PangoRectangle{}
+	logical_rect := C.PangoRectangle{}
+	C.pango_layout_get_extents(layout, &ink_rect, &logical_rect)
+
+	// Convert Pango units to pixels
+	l_width := (f32(logical_rect.width) / f32(pango_scale)) / ctx.scale_factor
+	l_height := (f32(logical_rect.height) / f32(pango_scale)) / ctx.scale_factor
+	v_width := (f32(ink_rect.width) / f32(pango_scale)) / ctx.scale_factor
+	v_height := (f32(ink_rect.height) / f32(pango_scale)) / ctx.scale_factor
+
 	return Layout{
-		items:      items
-		char_rects: char_rects
-		lines:      lines
+		items:         items
+		char_rects:    char_rects
+		lines:         lines
+		width:         l_width
+		height:        l_height
+		visual_width:  v_width
+		visual_height: v_height
 	}
 }
 

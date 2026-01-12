@@ -3,9 +3,6 @@ module main
 import gg
 import vglyph
 
-const window_width = 800
-const window_height = 600
-
 struct TypographyApp {
 mut:
 	gg &gg.Context
@@ -31,8 +28,8 @@ fn main() {
 
 	app.gg = gg.new_context(
 		bg_color:     gg.white
-		width:        window_width
-		height:       window_height
+		width:        800
+		height:       600
 		window_title: 'VGlyph Typography Demo'
 		init_fn:      init
 		frame_fn:     frame

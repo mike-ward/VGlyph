@@ -4,9 +4,13 @@ import gg
 
 pub struct Layout {
 pub mut:
-	items      []Item
-	char_rects []CharRect
-	lines      []Line
+	items         []Item
+	char_rects    []CharRect
+	lines         []Line
+	width         f32 // Logical Width
+	height        f32 // Logical Height
+	visual_width  f32 // Ink Width
+	visual_height f32 // Ink Height
 }
 
 pub struct CharRect {
