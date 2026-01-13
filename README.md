@@ -41,6 +41,8 @@ complex scripts, and rich text markup—while remaining easy to use.
   displays.
 - **LCD Subpixel Antialiasing**: Exploits LCD subpixel structure for sharper
   text rendering, combined with **Subpixel Positioning** for smooth animations.
+- **Variable Fonts**: Support for variable axes like weight (`wght`) and width
+  (`wdth`) for fluid typography animations.
 - **Text Measurement**: Query text dimensions (`text_width`, `text_height`,
   `font_height`) for precise layout calculations.
 
@@ -128,6 +130,7 @@ The `examples/` directory contains several demonstrations:
 - **`emoji_demo.v`** - Emoji and color bitmap rendering
 - **`editor_demo.v`** - Interactive text editing with cursor placement
 - **`typography_demo.v`** - OpenType features and custom tab stops
+- **`variable_font_demo.v`** - Variable font animation (weight/width axes)
 - **`stress_demo.v`** - Performance testing with thousands of glyphs
 
 Run any example with:

@@ -118,6 +118,7 @@ Configuration struct for defining how text should be laid out and styled.
 | `strikethrough`   | `bool`             | `false`       | Draw a strikethrough line.                           |
 | `tabs`            | `[]int`            | `[]`          | Custom tab stops in pixels.                          |
 | `opentype_features`| `map[string]int`  | `{}`          | OpenType feature tags (e.g., `{'smcp': 1}`).         |
+| `variation_axes`  | `map[string]f32`   | `{}`          | Variable font axes (e.g., `{'wght': 700.0}`).        |
 
 
 ## Context (Struct)

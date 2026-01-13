@@ -80,7 +80,7 @@ Standard engines support "Attributed Strings"—single text buffers with multipl
 - **Recommendation:** Support `RunDelegate` or `Attachment` in the layout, reserving space
   (width/height) for custom rendering (images, UI controls) within the text flow.
 
-## 3. Advanced Typography
+## ~~3. Advanced Typography~~
 
 ### ~~3.1 OpenType Features API~~
 **Priority:** Medium
@@ -92,13 +92,14 @@ Standard engines support "Attributed Strings"—single text buffers with multipl
     features: { 'liga': 1, 'smcp': 0 } // Typesafe feature control
     ```
 
-### 3.2 Variable Fonts
-**Priority:** Medium (Future)
+### ~~3.2 Variable Fonts~~
+**Priority:** Medium
 **Impact:** Modern UI design flexibility.
 
-- **Current State:** Implicit support via Pango strings possibly, but no explicit control.
-- **Recommendation:** Expose Variable Font axes (`wght`, `wdth`, `slnt`, `opsz`) in the API to
-  allow smooth animation of font weight/width.
+- **Status:** **Implemented**
+- **Details:**
+    - Added `variation_axes` to `TextConfig` for explicit axis control.
+    - Supports dynamic animation of `wght`, `wdth`, `slnt`, `opsz`, and other axes.
 
 ## 4. System Integration
 

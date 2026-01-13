@@ -134,4 +134,5 @@ pub:
 	// Advanced Typography
 	tabs              []int          // Tab stops in pixels
 	opentype_features map[string]int // e.g. {"smcp": 1, "tnum": 1}
+	variation_axes    map[string]f32 // e.g. {"wght": 700, "wdth": 100}
 }

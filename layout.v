@@ -113,8 +113,7 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 	}
 	C.pango_layout_set_alignment(layout, pango_align)
 
-	real_name := resolve_font_alias(cfg.font_name)
-	desc := C.pango_font_description_from_string(real_name.str)
+	desc := ctx.create_font_description(cfg)
 	if desc != unsafe { nil } {
 		C.pango_layout_set_font_description(layout, desc)
 		C.pango_font_description_free(desc)

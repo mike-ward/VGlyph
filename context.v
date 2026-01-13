@@ -90,18 +90,12 @@ pub fn (mut ctx Context) add_font_file(path string) bool {
 // font_height returns the total visual height (ascent + descent) of the font
 // described by cfg.
 pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
-	desc := C.pango_font_description_from_string(cfg.font_name.str)
+	desc := ctx.create_font_description(cfg)
 	if desc == unsafe { nil } {
 		log.error('${@FILE_LINE}: Failed to create Pango Font Description')
 		return 0
 	}
 	defer { C.pango_font_description_free(desc) }
-
-	// Resolve and set family aliases directly on the description
-	fam_ptr := C.pango_font_description_get_family(desc)
-	fam := if fam_ptr != unsafe { nil } { unsafe { cstring_to_vstring(fam_ptr) } } else { '' }
-	resolved_fam := resolve_family_alias(fam)
-	C.pango_font_description_set_family(desc, resolved_fam.str)
 
 	// Get metrics
 	language := C.pango_language_get_default()
@@ -201,4 +195,37 @@ fn resolve_family_alias(fam string) string {
 		new_fam += ', Sans'
 	}
 	return new_fam.trim(', ')
+}
+
+// create_font_description helper function to create and configure a PangoFontDescription
+// based on the provided TextConfig. It handles font name parsing, alias resolution,
+// and variable font axes.
+// Caller is responsible for freeing the returned description with pango_font_description_free.
+pub fn (mut ctx Context) create_font_description(cfg TextConfig) &C.PangoFontDescription {
+	desc := C.pango_font_description_from_string(cfg.font_name.str)
+	if desc == unsafe { nil } {
+		return unsafe { &C.PangoFontDescription(nil) }
+	}
+
+	// Resolve and set family aliases
+	fam_ptr := C.pango_font_description_get_family(desc)
+	fam := if fam_ptr != unsafe { nil } { unsafe { cstring_to_vstring(fam_ptr) } } else { '' }
+	resolved_fam := resolve_family_alias(fam)
+	C.pango_font_description_set_family(desc, resolved_fam.str)
+
+	// Apply variable font axes
+	if cfg.variation_axes.len > 0 {
+		mut axes_str := ''
+		mut first := true
+		for k, v in cfg.variation_axes {
+			if !first {
+				axes_str += ','
+			}
+			axes_str += '${k}=${v}'
+			first = false
+		}
+		C.pango_font_description_set_variations(desc, &char(axes_str.str))
+	}
+
+	return desc
 }
