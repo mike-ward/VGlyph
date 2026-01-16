@@ -239,11 +239,11 @@ pub fn (mut ctx Context) create_font_description(style TextStyle) &C.PangoFontDe
 	if unsafe { style.features != nil } && style.features.variation_axes.len > 0 {
 		mut axes_str := ''
 		mut first := true
-		for k, v in style.features.variation_axes {
+		for a in style.features.variation_axes {
 			if !first {
 				axes_str += ','
 			}
-			axes_str += '${k}=${v}'
+			axes_str += '${a.tag}=${a.value}'
 			first = false
 		}
 		C.pango_font_description_set_variations(desc, &char(axes_str.str))

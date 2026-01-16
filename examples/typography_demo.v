@@ -56,10 +56,11 @@ fn init(mut app TypographyApp) {
 		}
 	}
 
-	mut features := map[string]int{}
-	features['dlig'] = 1 // Discretionary ligatures
-	features['calt'] = 1 // Contextual alternates
-	features['frac'] = 1 // Fractions
+	features := [
+		vglyph.FontFeature{'dlig', 1}, // Discretionary ligatures
+		vglyph.FontFeature{'calt', 1}, // Contextual alternates
+		vglyph.FontFeature{'frac', 1}, // Fractions
+	]
 
 	app.cfg_lig = vglyph.TextConfig{
 		style: vglyph.TextStyle{

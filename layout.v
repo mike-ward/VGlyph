@@ -256,11 +256,11 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 		if unsafe { cfg.style.features != nil } && cfg.style.features.opentype_features.len > 0 {
 			mut features_str := ''
 			mut first := true
-			for k, v in cfg.style.features.opentype_features {
+			for f in cfg.style.features.opentype_features {
 				if !first {
 					features_str += ', '
 				}
-				features_str += '${k}=${v}'
+				features_str += '${f.tag}=${f.value}'
 				first = false
 			}
 			mut f_attr := C.pango_attr_font_features_new(&char(features_str.str))
@@ -702,11 +702,11 @@ fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle
 			if unsafe { style.features != nil } && style.features.variation_axes.len > 0 {
 				mut axes_str := ''
 				mut first := true
-				for k, v in style.features.variation_axes {
+				for a in style.features.variation_axes {
 					if !first {
 						axes_str += ','
 					}
-					axes_str += '${k}=${v}'
+					axes_str += '${a.tag}=${a.value}'
 					first = false
 				}
 				C.pango_font_description_set_variations(desc, &char(axes_str.str))
@@ -731,11 +731,11 @@ fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle
 	if unsafe { style.features != nil } && style.features.opentype_features.len > 0 {
 		mut features_str := ''
 		mut first := true
-		for k, v in style.features.opentype_features {
+		for f in style.features.opentype_features {
 			if !first {
 				features_str += ', '
 			}
-			features_str += '${k}=${v}'
+			features_str += '${f.tag}=${f.value}'
 			first = false
 		}
 		mut attr := C.pango_attr_font_features_new(&char(features_str.str))

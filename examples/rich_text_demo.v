@@ -123,9 +123,9 @@ fn frame(mut app RichTextApp) {
 			style: vglyph.TextStyle{
 				font_name: 'Sans 20'
 				features:  &vglyph.FontFeatures{
-					variation_axes: {
-						'wght': f32(900.0)
-					}
+					variation_axes: [
+						vglyph.FontAxis{'wght', f32(900.0)},
+					]
 				}
 			}
 		},

@@ -93,7 +93,7 @@ Standard engines support "Attributed Strings"—single text buffers with multipl
 - **Current State: Implemented**
 - **Recommendation:** Add a typed API for toggling features.
     ```v
-    features: { 'liga': 1, 'smcp': 0 } // Typesafe feature control
+    features: [{ 'liga': 1 }, { 'smcp': 0 }] // Typed feature control
     ```
 
 ### ~~3.2 Variable Fonts~~

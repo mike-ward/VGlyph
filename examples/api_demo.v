@@ -47,7 +47,7 @@ fn frame(mut app AppApi) {
 			width: 0
 		}
 	}
-	app.ts.draw_text(50, 10, 'Hello, New API! (px)', vglyph.TextConfig{
+	app.ts.draw_text(50, 10, 'Hello, New API! (pt)', vglyph.TextConfig{
 		style: vglyph.TextStyle{
 			font_name: cfg.style.font_name + 'pt'
 		}

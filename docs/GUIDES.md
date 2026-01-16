@@ -167,9 +167,11 @@ Common Features:
 cfg := vglyph.TextConfig{
     style: vglyph.TextStyle{
         font_name: 'Serif 18',
-        opentype_features: {
-            'smcp': 1, // Enable small caps
-            'onum': 1  // Enable old-style figures
+        features: &vglyph.FontFeatures{
+            opentype_features: [
+                vglyph.FontFeature{'smcp', 1}, // Enable small caps
+                vglyph.FontFeature{'onum', 1}, // Enable old-style figures
+            ]
         }
     }
 }

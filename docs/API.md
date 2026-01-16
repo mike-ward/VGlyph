@@ -157,9 +157,19 @@ Defines character-level styling attributes.
 | `bg_color`          | `gg.Color`       | `transparent` | Background color (highlight).                        |
 | `underline`         | `bool`           | `false`       | Draw a single underline.                             |
 | `strikethrough`     | `bool`           | `false`       | Draw a strikethrough line.                           |
-| `opentype_features` | `map[string]int` | `{}`          | OpenType feature tags (e.g., `{'smcp': 1}`).         |
-| `variation_axes`    | `map[string]f32` | `{}`          | Variable font axes (e.g., `{'wght': 700.0}`).        |
+| `features`          | `&FontFeatures`  | `nil`         | Advanced typography settings.                        |
 | `object`            | `?InlineObject`  | `none`        | Inline object definition (reserved space).           |
+
+## FontFeatures
+
+➡️ `struct FontFeatures`
+
+Container for advanced OpenType features and variable font settings.
+
+| Field               | Type            | Default | Description                                              |
+|:--------------------|:----------------|:--------|:---------------------------------------------------------|
+| `opentype_features` | `[]FontFeature` | `[]`    | List of OpenType features (e.g. `[{'smcp', 1}]`).        |
+| `variation_axes`    | `[]FontAxis`    | `[]`    | List of Variable Font axes (e.g. `[{'wght', 700.0}]`).   |
 
 ## InlineObject
 
