@@ -140,7 +140,14 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		if run_ptr != unsafe { nil } {
 			// Explicit cast since V treats C.PangoGlyphItem and C.PangoLayoutRun as distinct types
 			run := unsafe { &C.PangoLayoutRun(run_ptr) }
-			item := process_run(run, iter, text, scale_factor, primary_ascent, primary_descent)
+			item := process_run(ProcessRunConfig{
+				run:             run
+				iter:            iter
+				text:            text
+				scale_factor:    scale_factor
+				primary_ascent:  primary_ascent
+				primary_descent: primary_descent
+			})
 			if item.glyphs.len > 0 {
 				items << item
 			}
@@ -434,9 +441,26 @@ fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage, attrs Run
 	return m
 }
 
+struct ProcessRunConfig {
+	run             &C.PangoLayoutRun
+	iter            &C.PangoLayoutIter
+	text            string
+	scale_factor    f32
+	primary_ascent  f64
+	primary_descent f64
+}
+
 // process_run converts a single Pango glyph run into a V `Item`.
 // Handles attribute parsing, metric calculation, and glyph extraction.
-fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string, scale_factor f32, primary_ascent f64, primary_descent f64) Item {
+fn process_run(cfg ProcessRunConfig) Item {
+	run := cfg.run
+	iter := cfg.iter
+	text := cfg.text
+	scale_factor := cfg.scale_factor
+	primary_ascent := cfg.primary_ascent
+	// primary_descent is currently unused but kept for symmetry/interface
+	_ = cfg.primary_descent
+
 	pango_item := run.item
 	pango_font := pango_item.analysis.font
 	if pango_font == unsafe { nil } {
@@ -487,7 +511,6 @@ fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string, scal
 		// Emoji Center (relative to baseline) = (run_descent - run_ascent) / 2
 		//
 		// Shift = Target_Center - Emoji_Center
-
 		x_height := primary_ascent * 0.5 // heuristic
 		target_center := -x_height / 2.0
 		emoji_center := (run_descent - run_ascent) / 2.0

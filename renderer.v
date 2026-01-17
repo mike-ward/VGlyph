@@ -121,8 +121,12 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			cg := renderer.cache[key] or {
 				// Calculate target height for this glyph run
 				target_h := int(f32(item.ascent) * renderer.scale_factor)
-				cached_glyph := renderer.load_glyph(item.ft_face, glyph.index, target_h,
-					bin) or {
+				cached_glyph := renderer.load_glyph(LoadGlyphConfig{
+					face:          item.ft_face
+					index:         glyph.index
+					target_height: target_h
+					subpixel_bin:  bin
+				}) or {
 					CachedGlyph{} // fallback blank glyph
 				}
 				renderer.cache[key] = cached_glyph
@@ -254,9 +258,12 @@ pub fn (mut renderer Renderer) max_visual_height(layout Layout) f32 {
 				// Not found in any bin. Load Bin 0 (standard).
 				target_h := int(f32(item.ascent) * renderer.scale_factor)
 				// Bin 0
-				cg = renderer.load_glyph(item.ft_face, glyph.index, target_h, 0) or {
-					CachedGlyph{}
-				}
+				cg = renderer.load_glyph(LoadGlyphConfig{
+					face:          item.ft_face
+					index:         glyph.index
+					target_height: target_h
+					subpixel_bin:  0
+				}) or { CachedGlyph{} }
 				// Cache it
 				k0 := font_id ^ (((u64(glyph.index) << 2) | 0) << 32)
 				renderer.cache[k0] = cg

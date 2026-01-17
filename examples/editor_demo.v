@@ -24,7 +24,13 @@ fn main() {
 	mut app := &EditorApp{
 		gg:           unsafe { nil }
 		ts:           unsafe { nil }
-		text:         'Hello VGlyph Editor!\n\nThis is a demo of the new cursor positioning and selection logic.\n\nTry clicking anywhere to move the red cursor.\nClick and drag to select text (blue highlight).\n\nIt handles:\n- Multiline text\n- Variable width fonts\n- Empty lines\n- Margins and padding'
+		text:         'Hello VGlyph Editor!\n\n' +
+			'This is a demo of the new cursor positioning and selection logic.\n\n' +
+			'Try clicking anywhere to move the red cursor.\nClick and drag to select text (blue highlight).\n\n' +
+			'It handles:\n' + '- Multiline text\n' + '- Variable width fonts\n' +
+			'- Empty lines\n' + '- Margins and padding\n' +
+			'- عمد كإدخال بعض العبارات الفكاهية إليها.\n' +
+			'- непознати штампар узео кутију са словима'
 		select_start: -1
 	}
 

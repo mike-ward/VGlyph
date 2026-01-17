@@ -57,7 +57,15 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 	}
 }
 
-fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_height int, subpixel_bin int) !CachedGlyph {
+pub struct LoadGlyphConfig {
+pub:
+	face          &C.FT_FaceRec
+	index         u32
+	target_height int
+	subpixel_bin  int
+}
+
+fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 	// FT_LOAD_TARGET_LIGHT forces auto-hinting with a lighter touch,
 	// which usually looks better on screens than FULL hinting (too distorted)
 	// or NO hinting (too blurry).
@@ -76,7 +84,7 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 	// Subpixel Positioning:
 	// If we are shifting (bin > 0), we must load the outline, translate it, then render.
 	// We cannot use FT_LOAD_RENDER directly because it renders the unshifted glyph.
-	should_shift := subpixel_bin > 0
+	should_shift := cfg.subpixel_bin > 0
 
 	// Base flags: Load color (for emojis) and target mode.
 	mut flags := C.FT_LOAD_COLOR | target_flag
@@ -89,14 +97,14 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 		flags |= C.FT_LOAD_NO_BITMAP
 	}
 
-	if C.FT_Load_Glyph(ft_face, index, flags) != 0 {
-		if index != 0xfffffff {
-			log.error('${@FILE_LINE}: FT_Load_Glyph failed 0x${index:x}')
+	if C.FT_Load_Glyph(cfg.face, cfg.index, flags) != 0 {
+		if cfg.index != 0xfffffff {
+			log.error('${@FILE_LINE}: FT_Load_Glyph failed 0x${cfg.index:x}')
 		}
 		return error('FT_Load_Glyph failed')
 	}
 
-	mut glyph := ft_face.glyph
+	mut glyph := cfg.face.glyph
 
 	// If we intended to shift, perform the translation and rendering
 	if should_shift {
@@ -116,7 +124,7 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 		// Shift amount in 26.6 fixed point
 		// bin 0..3 corresponds to 0, 0.25, 0.5, 0.75 pixels.
 		// 1 pixel = 64 units. 0.25 pixels = 16 units.
-		shift := i64(subpixel_bin * 16)
+		shift := i64(cfg.subpixel_bin * 16)
 
 		C.FT_Outline_Translate(&glyph.outline, shift, 0)
 
@@ -131,7 +139,7 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 
 		if C.FT_Render_Glyph(glyph, render_mode) != 0 {
 			// If rendering failed (e.g. maybe it wasn't an outline?), try reloading with default render
-			if C.FT_Load_Glyph(ft_face, index, C.FT_LOAD_RENDER | C.FT_LOAD_COLOR | target_flag) != 0 {
+			if C.FT_Load_Glyph(cfg.face, cfg.index, C.FT_LOAD_RENDER | C.FT_LOAD_COLOR | target_flag) != 0 {
 				return error('FT_Render_Glyph failed and fallback load failed')
 			}
 		}
@@ -143,7 +151,7 @@ fn (mut renderer Renderer) load_glyph(ft_face &C.FT_FaceRec, index u32, target_h
 		return CachedGlyph{} // space or empty glyph
 	}
 
-	bitmap := ft_bitmap_to_bitmap(&ft_bitmap, ft_face, target_height)!
+	bitmap := ft_bitmap_to_bitmap(&ft_bitmap, cfg.face, cfg.target_height)!
 
 	return match int(ft_bitmap.pixel_mode) {
 		C.FT_PIXEL_MODE_BGRA { renderer.atlas.insert_bitmap(bitmap, 0, bitmap.height) }
