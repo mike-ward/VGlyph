@@ -109,6 +109,29 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 	}
 	defer { C.pango_layout_iter_free(iter) }
 
+	// Get primary font metrics for vertical alignment of emojis
+	mut primary_ascent := f64(0)
+	mut primary_descent := f64(0)
+	font_desc := C.pango_layout_get_font_description(layout)
+	if font_desc != unsafe { nil } {
+		// Create a temporary metrics context
+		ctx := C.pango_layout_get_context(layout)
+		lang := C.pango_language_get_default()
+		metrics := C.pango_context_get_metrics(ctx, font_desc, lang)
+		if metrics != unsafe { nil } {
+			val_ascent := C.pango_font_metrics_get_ascent(metrics)
+			val_descent := C.pango_font_metrics_get_descent(metrics)
+			// Metrics are in Pango units
+			primary_ascent = (f64(val_ascent) / f64(pango_scale)) / scale_factor
+			primary_descent = (f64(val_descent) / f64(pango_scale)) / scale_factor
+			C.pango_font_metrics_unref(metrics)
+		}
+	} else {
+		// Fallback if no font desc (unlikely with valid PangoLayout, but possible)
+		// Try to get from first run or default?
+		// For now leave as 0, centering logic might skip or default.
+	}
+
 	mut items := []Item{}
 
 	for {
@@ -117,7 +140,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		if run_ptr != unsafe { nil } {
 			// Explicit cast since V treats C.PangoGlyphItem and C.PangoLayoutRun as distinct types
 			run := unsafe { &C.PangoLayoutRun(run_ptr) }
-			item := process_run(run, iter, text, scale_factor)
+			item := process_run(run, iter, text, scale_factor, primary_ascent, primary_descent)
 			if item.glyphs.len > 0 {
 				items << item
 			}
@@ -413,7 +436,7 @@ fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage, attrs Run
 
 // process_run converts a single Pango glyph run into a V `Item`.
 // Handles attribute parsing, metric calculation, and glyph extraction.
-fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string, scale_factor f32) Item {
+fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string, scale_factor f32, primary_ascent f64, primary_descent f64) Item {
 	pango_item := run.item
 	pango_font := pango_item.analysis.font
 	if pango_font == unsafe { nil } {
@@ -449,7 +472,29 @@ fn process_run(run &C.PangoLayoutRun, iter &C.PangoLayoutIter, text string, scal
 	run_ascent := (f64(ascent_pango) / f64(pango_scale)) / scale_factor
 
 	run_descent := (f64(descent_pango) / f64(pango_scale)) / scale_factor
-	run_y := (f64(baseline_pango) / f64(pango_scale)) / scale_factor
+	mut run_y := (f64(baseline_pango) / f64(pango_scale)) / scale_factor
+
+	// Emoji Vertical Centering
+	// Detect if this is an emoji run
+	fam_name := unsafe { cstring_to_vstring(ft_face.family_name) } // Assumes ft_face is valid
+	if fam_name.contains('Emoji') && primary_ascent > 0 {
+		// Logic: Align the visual center of the emoji with the approximate x-height center of the primary font.
+		// "Raised" appearance comes from aligning to full ascent (which includes accents/line gap).
+		// CSS `vertical-align: middle` aligns with `baseline + x-height / 2`.
+		//
+		// Approx X-Height = 0.5 * PrimaryAscent
+		// Target Center (from baseline) = - (XHeight / 2)
+		// Emoji Center (relative to baseline) = (run_descent - run_ascent) / 2
+		//
+		// Shift = Target_Center - Emoji_Center
+
+		x_height := primary_ascent * 0.5 // heuristic
+		target_center := -x_height / 2.0
+		emoji_center := (run_descent - run_ascent) / 2.0
+
+		shift := target_center - emoji_center
+		run_y += shift
+	}
 
 	// Extract glyphs
 	glyph_string := run.glyphs
