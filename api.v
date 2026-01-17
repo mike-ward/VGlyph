@@ -160,7 +160,7 @@ pub fn (mut ts TextSystem) update_accessibility(l Layout, x f32, y f32) {
 // get_or_create_layout retrieves a cached layout or creates a new one.
 // Updates the last access time for cache eviction tracking.
 fn (mut ts TextSystem) get_or_create_layout(text string, cfg TextConfig) !&CachedLayout {
-	key := ts.get_cache_key(text, cfg)
+	key := ts.get_cache_key(text, &cfg)
 
 	mut item := ts.cache[key] or {
 		layout := ts.ctx.layout_text(text, cfg)!
@@ -178,28 +178,36 @@ fn (mut ts TextSystem) get_or_create_layout(text string, cfg TextConfig) !&Cache
 
 // Internal Helpers
 
-fn (ts TextSystem) get_cache_key(text string, cfg TextConfig) u64 {
+pub fn (ts TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 	// FNV-1a 64-bit hash
 	mut hash := u64(14695981039346656037)
 	prime := u64(1099511628211)
 
-	// Hash text
-	for i in 0 .. text.len {
-		hash ^= u64(text[i])
-		hash *= prime
+	// Hash text (optimization: use unsafe pointer access to skip bounds checks)
+	unsafe {
+		mut ptr := text.str
+		end := ptr + text.len
+		for ptr < end {
+			hash ^= u64(*ptr)
+			hash *= prime
+			ptr++
+		}
 	}
-
 	// Separator
 	hash ^= u64(124) // '|'
 	hash *= prime
 
 	// Hash TextStyle
 	// font_name
-	for i in 0 .. cfg.style.font_name.len {
-		hash ^= u64(cfg.style.font_name[i])
-		hash *= prime
+	unsafe {
+		mut ptr := cfg.style.font_name.str
+		end := ptr + cfg.style.font_name.len
+		for ptr < end {
+			hash ^= u64(*ptr)
+			hash *= prime
+			ptr++
+		}
 	}
-
 	// size
 	hash ^= math.f32_bits(cfg.style.size)
 	hash *= prime
@@ -233,9 +241,68 @@ fn (ts TextSystem) get_cache_key(text string, cfg TextConfig) u64 {
 		hash *= prime
 	}
 
+	// Features (Pointer or Content)
+	if cfg.style.features != unsafe { nil } {
+		// We should hash the content of features if possible, or at least the pointer if we assume immutability/uniqueness.
+		// For now, let's hash the content to be safe and correct.
+		// NOTE: This might be slow if features are large, but usually they are small.
+		unsafe {
+			// Iterate opentype_features
+			for f in cfg.style.features.opentype_features {
+				// tag is string
+				mut ptr := f.tag.str
+				end := ptr + f.tag.len
+				for ptr < end {
+					hash ^= u64(*ptr)
+					hash *= prime
+					ptr++
+				}
+				hash ^= u64(f.value)
+				hash *= prime
+			}
+			// Iterate variation_axes
+			for a in cfg.style.features.variation_axes {
+				mut ptr := a.tag.str
+				end := ptr + a.tag.len
+				for ptr < end {
+					hash ^= u64(*ptr)
+					hash *= prime
+					ptr++
+				}
+				hash ^= math.f32_bits(a.value)
+				hash *= prime
+			}
+		}
+	}
+
+	// Inline Object
+	if cfg.style.object != unsafe { nil } {
+		unsafe {
+			// Hash object ID
+			mut ptr := cfg.style.object.id.str
+			end := ptr + cfg.style.object.id.len
+			for ptr < end {
+				hash ^= u64(*ptr)
+				hash *= prime
+				ptr++
+			}
+			// Hash dimensions/offset to be safe
+			hash ^= math.f32_bits(cfg.style.object.width)
+			hash *= prime
+			hash ^= math.f32_bits(cfg.style.object.height)
+			hash *= prime
+			hash ^= math.f32_bits(cfg.style.object.offset)
+			hash *= prime
+		}
+	}
+
 	// Hash BlockStyle
 	// width
 	hash ^= math.f32_bits(cfg.block.width)
+	hash *= prime
+
+	// indent
+	hash ^= math.f32_bits(cfg.block.indent)
 	hash *= prime
 
 	// align
