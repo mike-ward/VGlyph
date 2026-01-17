@@ -173,7 +173,6 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 	}
 
 	// Apply layout configuration
-	// Apply layout configuration
 	if cfg.block.width > 0 {
 		// Apply DPI scaling to input width (Logical -> Pango Units)
 		// block.width (Logical) * scale_factor (DPI) * pango_scale (Pango)

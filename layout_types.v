@@ -95,7 +95,7 @@ pub enum WrapMode {
 
 // TextConfig holds configuration for text layout and rendering.
 pub struct TextConfig {
-pub:
+pub mut:
 	style          TextStyle
 	block          BlockStyle
 	use_markup     bool
@@ -104,7 +104,7 @@ pub:
 
 // BlockStyle defines the layout properties of a block of text.
 pub struct BlockStyle {
-pub:
+pub mut:
 	align Alignment = .left
 	wrap  WrapMode  = .word
 	width f32       = -1.0
