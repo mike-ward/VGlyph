@@ -39,7 +39,7 @@ pub:
 	start_index int
 	length      int
 
-	color gg.Color = gg.black
+	color gg.Color
 
 	// Text Decoration
 	has_underline           bool
@@ -125,7 +125,7 @@ pub:
 	// size overrides the size specified in font_name.
 	// It is specified in points.
 	size     f32
-	color    gg.Color = gg.black
+	color    gg.Color = gg.Color{0, 0, 0, 0}
 	bg_color gg.Color = gg.Color{0, 0, 0, 0}
 
 	// Decorations

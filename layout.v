@@ -147,6 +147,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 				scale_factor:    scale_factor
 				primary_ascent:  primary_ascent
 				primary_descent: primary_descent
+				base_color:      cfg.style.color
 			})
 			if item.glyphs.len > 0 {
 				items << item
@@ -244,18 +245,6 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 	}
 
 	if attr_list != unsafe { nil } {
-		// Foreground Color
-		// Apply cfg.color unless markup overrides it (markup wins by default).
-		if !cfg.use_markup {
-			// Pango uses 16-bit colors (0-65535)
-			mut fg_attr := C.pango_attr_foreground_new(u16(cfg.style.color.r) << 8, u16(cfg.style.color.g) << 8,
-				u16(cfg.style.color.b) << 8)
-			// Range covers entire text
-			fg_attr.start_index = 0
-			fg_attr.end_index = u32(C.G_MAXUINT)
-			C.pango_attr_list_insert(attr_list, fg_attr)
-		}
-
 		// Background Color
 		if cfg.style.bg_color.a > 0 {
 			mut bg_attr := C.pango_attr_background_new(u16(cfg.style.bg_color.r) << 8,
@@ -332,7 +321,8 @@ pub mut:
 // from Pango attributes.
 fn parse_run_attributes(pango_item &C.PangoItem) RunAttributes {
 	mut attrs := RunAttributes{
-		color:    gg.black
+		// Default to transparent (0,0,0,0) to indicate "no color attribute"
+		color:    gg.Color{0, 0, 0, 0}
 		bg_color: gg.Color{0, 0, 0, 0}
 	}
 
@@ -448,6 +438,7 @@ struct ProcessRunConfig {
 	scale_factor    f32
 	primary_ascent  f64
 	primary_descent f64
+	base_color      gg.Color
 }
 
 // process_run converts a single Pango glyph run into a V `Item`.
@@ -550,6 +541,12 @@ fn process_run(cfg ProcessRunConfig) Item {
 	start_index := pango_item.offset
 	length := pango_item.length
 
+	// Check for transparent color (no attribute found) and fallback to base_color
+	mut final_color := attrs.color
+	if final_color.a == 0 {
+		final_color = cfg.base_color
+	}
+
 	// Conditionally include run_text for debug builds
 	$if debug {
 		run_str := unsafe { (text.str + start_index).vstring_with_len(length) }
@@ -562,7 +559,7 @@ fn process_run(cfg ProcessRunConfig) Item {
 			y:                       run_y
 			start_index:             start_index
 			length:                  length
-			color:                   attrs.color
+			color:                   final_color
 			has_underline:           attrs.has_underline
 			has_strikethrough:       attrs.has_strikethrough
 			underline_offset:        metrics.und_pos
@@ -584,7 +581,7 @@ fn process_run(cfg ProcessRunConfig) Item {
 			y:                       run_y
 			start_index:             start_index
 			length:                  length
-			color:                   attrs.color
+			color:                   final_color
 			has_underline:           attrs.has_underline
 			has_strikethrough:       attrs.has_strikethrough
 			underline_offset:        metrics.und_pos
