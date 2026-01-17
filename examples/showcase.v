@@ -836,6 +836,28 @@ fn on_event(e &gg.Event, mut app App) {
 				app.scroll_y = app.max_scroll
 			}
 		}
+		.key_down {
+			step := f32(40.0)
+			page := f32(app.window_h) * 0.9
+
+			match e.key_code {
+				.up { app.scroll_y -= step }
+				.down { app.scroll_y += step }
+				.page_up { app.scroll_y -= page }
+				.page_down { app.scroll_y += page }
+				.home { app.scroll_y = 0 }
+				.end { app.scroll_y = app.max_scroll }
+				else {}
+			}
+
+			// Clamp
+			if app.scroll_y < 0 {
+				app.scroll_y = 0
+			}
+			if app.scroll_y > app.max_scroll {
+				app.scroll_y = app.max_scroll
+			}
+		}
 		.mouse_down {
 			local_x := e.mouse_x - 50.0
 			local_y := e.mouse_y - app.interactive_y
