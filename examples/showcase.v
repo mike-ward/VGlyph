@@ -392,11 +392,38 @@ fn (mut app ShowcaseApp) create_content() {
 			'Emoji: 🚀 🎨 🍦 🦊 🔥 ✨',
 		]
 
+		// Calculate max label width for alignment
+		mut max_label_w := f32(0)
 		for sample in samples {
-			section.layouts << app.ts.layout_text(sample, vglyph.TextConfig{
+			parts := sample.split(':')
+			if parts.len > 0 {
+				label := parts[0] + ':'
+				// Measure label width
+				layout := app.ts.layout_text(label, vglyph.TextConfig{
+					style: vglyph.TextStyle{
+						font_name: 'Sans 24'
+					}
+				}) or { panic(err) }
+				if layout.width > max_label_w {
+					max_label_w = layout.width
+				}
+			}
+		}
+
+		tab_stop := int(max_label_w) + 20
+
+		for sample in samples {
+			parts := sample.split(':')
+			label := parts[0] + ':'
+			content := parts[1..].join(':').trim_space()
+
+			section.layouts << app.ts.layout_text('${label}\t${content}', vglyph.TextConfig{
 				style: vglyph.TextStyle{
 					font_name: 'Sans 24'
 					color:     text_color
+				}
+				block: vglyph.BlockStyle{
+					tabs: [tab_stop]
 				}
 			}) or { panic(err) }
 		}
