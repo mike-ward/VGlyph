@@ -132,6 +132,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		// For now leave as 0, centering logic might skip or default.
 	}
 
+	mut all_glyphs := []Glyph{}
 	mut items := []Item{}
 
 	for {
@@ -140,7 +141,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		if run_ptr != unsafe { nil } {
 			// Explicit cast since V treats C.PangoGlyphItem and C.PangoLayoutRun as distinct types
 			run := unsafe { &C.PangoLayoutRun(run_ptr) }
-			item := process_run(ProcessRunConfig{
+			item := process_run(mut all_glyphs, ProcessRunConfig{
 				run:             run
 				iter:            iter
 				text:            text
@@ -149,7 +150,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 				primary_descent: primary_descent
 				base_color:      cfg.style.color
 			})
-			if item.glyphs.len > 0 {
+			if item.glyph_count > 0 || item.is_object {
 				items << item
 			}
 		}
@@ -177,6 +178,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 
 	return Layout{
 		items:         items
+		glyphs:        all_glyphs
 		char_rects:    char_rects
 		lines:         lines
 		width:         l_width
@@ -443,7 +445,7 @@ struct ProcessRunConfig {
 
 // process_run converts a single Pango glyph run into a V `Item`.
 // Handles attribute parsing, metric calculation, and glyph extraction.
-fn process_run(cfg ProcessRunConfig) Item {
+fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 	run := cfg.run
 	iter := cfg.iter
 	text := cfg.text
@@ -513,7 +515,8 @@ fn process_run(cfg ProcessRunConfig) Item {
 	// Extract glyphs
 	glyph_string := run.glyphs
 	num_glyphs := glyph_string.num_glyphs
-	mut glyphs := []Glyph{cap: num_glyphs}
+
+	start_glyph_idx := all_glyphs.len
 	mut width := f64(0)
 	infos := glyph_string.glyphs
 
@@ -525,7 +528,7 @@ fn process_run(cfg ProcessRunConfig) Item {
 			x_adv := (f64(info.geometry.width) / f64(pango_scale)) / scale_factor
 			y_adv := 0.0
 
-			glyphs << Glyph{
+			all_glyphs << Glyph{
 				index:     info.glyph
 				x_offset:  x_off
 				y_offset:  y_off
@@ -537,6 +540,8 @@ fn process_run(cfg ProcessRunConfig) Item {
 		}
 	}
 
+	glyph_count := all_glyphs.len - start_glyph_idx
+
 	// Get sub-text
 	start_index := pango_item.offset
 	length := pango_item.length
@@ -547,13 +552,19 @@ fn process_run(cfg ProcessRunConfig) Item {
 		final_color = cfg.base_color
 	}
 
+	// Double fallback: if base_color was transparent, default to black (opaque)
+	if final_color.a == 0 {
+		final_color = gg.Color{0, 0, 0, 255}
+	}
+
 	// Conditionally include run_text for debug builds
 	$if debug {
 		run_str := unsafe { (text.str + start_index).vstring_with_len(length) }
 		return Item{
 			run_text:                run_str
 			ft_face:                 ft_face
-			glyphs:                  glyphs
+			glyph_start:             start_glyph_idx
+			glyph_count:             glyph_count
 			width:                   width
 			x:                       run_x
 			y:                       run_y
@@ -575,7 +586,8 @@ fn process_run(cfg ProcessRunConfig) Item {
 	} $else {
 		return Item{
 			ft_face:                 ft_face
-			glyphs:                  glyphs
+			glyph_start:             start_glyph_idx
+			glyph_count:             glyph_count
 			width:                   width
 			x:                       run_x
 			y:                       run_y

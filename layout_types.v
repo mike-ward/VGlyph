@@ -5,6 +5,7 @@ import gg
 pub struct Layout {
 pub mut:
 	items         []Item
+	glyphs        []Glyph
 	char_rects    []CharRect
 	lines         []Line
 	width         f32 // Logical Width
@@ -29,12 +30,13 @@ pub:
 
 pub struct Item {
 pub:
-	run_text string
-	ft_face  &C.FT_FaceRec
-	glyphs   []Glyph
-	width    f64
-	x        f64 // Run position relative to layout (x)
-	y        f64 // Run position relative to layout (baseline y)
+	run_text    string
+	ft_face     &C.FT_FaceRec
+	glyph_start int
+	glyph_count int
+	width       f64
+	x           f64 // Run position relative to layout (x)
+	y           f64 // Run position relative to layout (baseline y)
 
 	start_index int
 	length      int

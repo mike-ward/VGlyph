@@ -86,7 +86,8 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			renderer.ctx.draw_rect_filled(bg_x, bg_y, bg_w, bg_h, item.bg_color)
 		}
 
-		for glyph in item.glyphs {
+		for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
+			glyph := layout.glyphs[i]
 			// Check for unknown glyph flag
 			if (glyph.index & pango_glyph_unknown_flag) != 0 {
 				continue
@@ -230,9 +231,9 @@ pub fn (mut renderer Renderer) max_visual_height(layout Layout) f32 {
 		font_id := u64(voidptr(item.ft_face))
 		base_y := f32(item.y)
 
-		for glyph in item.glyphs {
+		for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
+			glyph := layout.glyphs[i]
 			// Resolve cache to get bitmap size
-			// We check Bin 0 (standard integer alignment) for metrics.
 			// We check Bin 0 (standard integer alignment) for metrics.
 			// This might trigger a load if only subpixel bins were used, but ensures consistency.
 
