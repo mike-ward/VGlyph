@@ -7,7 +7,7 @@ import sokol.sapp
 const subpixel_win_width = 800
 const subpixel_win_height = 600
 
-struct App {
+struct SubpixelApp {
 mut:
 	ctx         &gg.Context      = unsafe { nil }
 	text_system &vglyph.Context  = unsafe { nil }
@@ -15,7 +15,7 @@ mut:
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &SubpixelApp{}
 	app.ctx = gg.new_context(
 		bg_color:     gg.white
 		width:        subpixel_win_width
@@ -28,7 +28,7 @@ fn main() {
 	app.ctx.run()
 }
 
-fn init(mut app App) {
+fn init(mut app SubpixelApp) {
 	scale := sapp.dpi_scale()
 	// Initialize vglyph context
 	app.text_system = vglyph.new_context(scale) or { panic(err) }
@@ -36,14 +36,14 @@ fn init(mut app App) {
 	app.renderer = vglyph.new_renderer(mut app.ctx, scale)
 }
 
-fn frame(mut app App) {
+fn frame(mut app SubpixelApp) {
 	app.ctx.begin()
 	app.draw()
 	app.ctx.end()
 	app.renderer.commit()
 }
 
-fn (mut app App) draw() {
+fn (mut app SubpixelApp) draw() {
 	// Draw various sizes to inspect subpixel rendering quality
 	sizes := [10, 11, 12, 14, 16, 18, 24, 32, 48]
 	mut y_pos := 20.0
@@ -61,7 +61,7 @@ fn (mut app App) draw() {
 		layout := app.text_system.layout_text(text, cfg) or { panic(err) }
 		app.renderer.draw_layout(layout, f32(x_pos), f32(y_pos))
 
-		height := app.renderer.max_visual_height(layout)
+		height := layout.visual_height
 		y_pos += height + 10.0
 	}
 
@@ -85,7 +85,7 @@ fn (mut app App) draw() {
 		layout := app.text_system.layout_text(text, cfg) or { panic(err) }
 		app.renderer.draw_layout(layout, f32(x_pos), f32(y_pos))
 
-		height := app.renderer.max_visual_height(layout)
+		height := layout.visual_height
 		y_pos += height + 5.0
 	}
 }

@@ -109,6 +109,9 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 	}
 	defer { C.pango_layout_iter_free(iter) }
 
+	// Pre-calculate inverse scale for faster pixel conversion
+	pixel_scale := 1.0 / (f64(pango_scale) * f64(scale_factor))
+
 	// Get primary font metrics for vertical alignment of emojis
 	mut primary_ascent := f64(0)
 	mut primary_descent := f64(0)
@@ -122,8 +125,10 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 			val_ascent := C.pango_font_metrics_get_ascent(metrics)
 			val_descent := C.pango_font_metrics_get_descent(metrics)
 			// Metrics are in Pango units
-			primary_ascent = (f64(val_ascent) / f64(pango_scale)) / scale_factor
-			primary_descent = (f64(val_descent) / f64(pango_scale)) / scale_factor
+			// Metrics are in Pango units
+			// pixel_scale already defined above
+			primary_ascent = f64(val_ascent) * pixel_scale
+			primary_descent = f64(val_descent) * pixel_scale
 			C.pango_font_metrics_unref(metrics)
 		}
 	} else {
@@ -141,18 +146,16 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		if run_ptr != unsafe { nil } {
 			// Explicit cast since V treats C.PangoGlyphItem and C.PangoLayoutRun as distinct types
 			run := unsafe { &C.PangoLayoutRun(run_ptr) }
-			item := process_run(mut all_glyphs, ProcessRunConfig{
+			process_run(mut items, mut all_glyphs, ProcessRunConfig{
 				run:             run
 				iter:            iter
 				text:            text
 				scale_factor:    scale_factor
+				pixel_scale:     pixel_scale
 				primary_ascent:  primary_ascent
 				primary_descent: primary_descent
 				base_color:      cfg.style.color
 			})
-			if item.glyph_count > 0 || item.is_object {
-				items << item
-			}
 		}
 
 		if !C.pango_layout_iter_next_run(iter) {
@@ -438,6 +441,7 @@ struct ProcessRunConfig {
 	iter            &C.PangoLayoutIter
 	text            string
 	scale_factor    f32
+	pixel_scale     f64
 	primary_ascent  f64
 	primary_descent f64
 	base_color      gg.Color
@@ -445,11 +449,12 @@ struct ProcessRunConfig {
 
 // process_run converts a single Pango glyph run into a V `Item`.
 // Handles attribute parsing, metric calculation, and glyph extraction.
-fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
+fn process_run(mut items []Item, mut all_glyphs []Glyph, cfg ProcessRunConfig) {
 	run := cfg.run
 	iter := cfg.iter
 	text := cfg.text
-	scale_factor := cfg.scale_factor
+	_ = cfg.scale_factor
+	pixel_scale := cfg.pixel_scale
 	primary_ascent := cfg.primary_ascent
 	// primary_descent is currently unused but kept for symmetry/interface
 	_ = cfg.primary_descent
@@ -457,16 +462,12 @@ fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 	pango_item := run.item
 	pango_font := pango_item.analysis.font
 	if pango_font == unsafe { nil } {
-		return Item{
-			ft_face: unsafe { nil }
-		}
+		return
 	}
 
 	ft_face := C.pango_ft2_font_get_face(pango_font)
 	if ft_face == unsafe { nil } {
-		return Item{
-			ft_face: unsafe { nil }
-		}
+		return
 	}
 
 	attrs := parse_run_attributes(pango_item)
@@ -480,16 +481,17 @@ fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 	C.pango_layout_iter_get_run_extents(iter, unsafe { nil }, &logical_rect)
 
 	// Round run position to integer grid
-	run_x := (f64(logical_rect.x) / f64(pango_scale)) / scale_factor
+	// Round run position to integer grid
+	run_x := f64(logical_rect.x) * pixel_scale
 
 	baseline_pango := C.pango_layout_iter_get_baseline(iter)
 	ascent_pango := baseline_pango - logical_rect.y
 	descent_pango := (logical_rect.y + logical_rect.height) - baseline_pango
 
-	run_ascent := (f64(ascent_pango) / f64(pango_scale)) / scale_factor
+	run_ascent := f64(ascent_pango) * pixel_scale
 
-	run_descent := (f64(descent_pango) / f64(pango_scale)) / scale_factor
-	mut run_y := (f64(baseline_pango) / f64(pango_scale)) / scale_factor
+	run_descent := f64(descent_pango) * pixel_scale
+	mut run_y := f64(baseline_pango) * pixel_scale
 
 	// Emoji Vertical Centering
 	// Detect if this is an emoji run
@@ -523,9 +525,9 @@ fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 	for i in 0 .. num_glyphs {
 		unsafe {
 			info := infos[i]
-			x_off := (f64(info.geometry.x_offset) / f64(pango_scale)) / scale_factor
-			y_off := (f64(info.geometry.y_offset) / f64(pango_scale)) / scale_factor
-			x_adv := (f64(info.geometry.width) / f64(pango_scale)) / scale_factor
+			x_off := f64(info.geometry.x_offset) * pixel_scale
+			y_off := f64(info.geometry.y_offset) * pixel_scale
+			x_adv := f64(info.geometry.width) * pixel_scale
 			y_adv := 0.0
 
 			all_glyphs << Glyph{
@@ -584,7 +586,7 @@ fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 			use_original_color:      (ft_face.face_flags & ft_face_flag_color) != 0
 		}
 	} $else {
-		return Item{
+		item := Item{
 			ft_face:                 ft_face
 			glyph_start:             start_glyph_idx
 			glyph_count:             glyph_count
@@ -608,6 +610,9 @@ fn process_run(mut all_glyphs []Glyph, cfg ProcessRunConfig) Item {
 			is_object:               attrs.is_object
 			object_id:               attrs.object_id
 		}
+		if item.glyph_count > 0 || item.is_object {
+			items << item
+		}
 	}
 }
 
@@ -624,11 +629,12 @@ fn compute_hit_test_rects(layout &C.PangoLayout, text string, scale_factor f32) 
 	defer { C.pango_layout_iter_free(iter) }
 
 	// Calculate fallback width for zero-width spaces
+	pixel_scale := 1.0 / (f32(pango_scale) * scale_factor)
 	font_desc := C.pango_layout_get_font_description(layout)
 	mut fallback_width := f32(0)
 	if font_desc != unsafe { nil } {
 		size_pango := C.pango_font_description_get_size(font_desc)
-		fallback_width = f32(size_pango) / f32(pango_scale) / 3.0
+		fallback_width = f32(size_pango) * pixel_scale / 3.0
 	}
 
 	for {
@@ -643,10 +649,10 @@ fn compute_hit_test_rects(layout &C.PangoLayout, text string, scale_factor f32) 
 		pos := C.PangoRectangle{}
 		C.pango_layout_iter_get_char_extents(iter, &pos)
 
-		mut final_x := (f32(pos.x) / f32(pango_scale)) / scale_factor
-		mut final_y := (f32(pos.y) / f32(pango_scale)) / scale_factor
-		mut final_w := (f32(pos.width) / f32(pango_scale)) / scale_factor
-		mut final_h := (f32(pos.height) / f32(pango_scale)) / scale_factor
+		mut final_x := f32(pos.x) * pixel_scale
+		mut final_y := f32(pos.y) * pixel_scale
+		mut final_w := f32(pos.width) * pixel_scale
+		mut final_h := f32(pos.height) * pixel_scale
 
 		if final_w < 0 {
 			final_x += final_w
@@ -696,10 +702,11 @@ fn compute_lines(layout &C.PangoLayout, iter &C.PangoLayoutIter, scale_factor f3
 			C.pango_layout_iter_get_line_extents(line_iter, unsafe { nil }, &rect)
 
 			// Pango coords to Pixels
-			mut final_x := (f32(rect.x) / f32(pango_scale)) / scale_factor
-			mut final_y := (f32(rect.y) / f32(pango_scale)) / scale_factor
-			mut final_w := (f32(rect.width) / f32(pango_scale)) / scale_factor
-			mut final_h := (f32(rect.height) / f32(pango_scale)) / scale_factor
+			pixel_scale := 1.0 / (f32(pango_scale) * scale_factor)
+			mut final_x := f32(rect.x) * pixel_scale
+			mut final_y := f32(rect.y) * pixel_scale
+			mut final_w := f32(rect.width) * pixel_scale
+			mut final_h := f32(rect.height) * pixel_scale
 
 			lines << Line{
 				start_index:        line_ptr.start_index

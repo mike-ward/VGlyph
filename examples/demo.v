@@ -121,7 +121,7 @@ fn frame(mut app AppDemo) {
 					hit_rect.height, gg.white)
 			}
 
-			y += app.renderer.max_visual_height(layout) + 20
+			y += layout.visual_height + 20
 		}
 		app.renderer.commit()
 	}

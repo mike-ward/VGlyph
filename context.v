@@ -8,6 +8,7 @@ pub struct Context {
 	pango_font_map &C.PangoFontMap
 	pango_context  &C.PangoContext
 	scale_factor   f32 = 1.0
+	scale_inv      f32 = 1.0
 }
 
 // new_context initializes the global Pango and FreeType environment.
@@ -71,6 +72,7 @@ pub fn new_context(scale_factor f32) !&Context {
 		pango_font_map: pango_font_map
 		pango_context:  pango_context
 		scale_factor:   scale_factor
+		scale_inv:      1.0 / scale_factor
 	}
 }
 

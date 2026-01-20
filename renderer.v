@@ -17,6 +17,7 @@ mut:
 	atlas        GlyphAtlas
 	cache        map[u64]CachedGlyph
 	scale_factor f32 = 1.0
+	scale_inv    f32 = 1.0
 }
 
 pub fn new_renderer(mut ctx gg.Context, scale_factor f32) &Renderer {
@@ -26,6 +27,7 @@ pub fn new_renderer(mut ctx gg.Context, scale_factor f32) &Renderer {
 		atlas:        atlas
 		cache:        map[u64]CachedGlyph{}
 		scale_factor: scale_factor
+		scale_inv:    1.0 / scale_factor
 	}
 }
 
@@ -36,6 +38,7 @@ pub fn new_renderer_atlas_size(mut ctx gg.Context, width int, height int, scale_
 		atlas:        atlas
 		cache:        map[u64]CachedGlyph{}
 		scale_factor: scale_factor
+		scale_inv:    1.0 / scale_factor
 	}
 }
 
@@ -142,11 +145,12 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			// cg.left / cg.top are the bitmap offsets from origin (in physical pixels)
 			// draw_x/y are logical coordinates for gg
 
-			draw_x := (f32(draw_origin_x) + f32(cg.left)) / scale
-			draw_y := (f32(draw_origin_y) - f32(cg.top)) / scale
+			scale_inv := renderer.scale_inv
+			draw_x := (f32(draw_origin_x) + f32(cg.left)) * scale_inv
+			draw_y := (f32(draw_origin_y) - f32(cg.top)) * scale_inv
 
-			glyph_w := f32(cg.width) / scale
-			glyph_h := f32(cg.height) / scale
+			glyph_w := f32(cg.width) * scale_inv
+			glyph_h := f32(cg.height) * scale_inv
 
 			// Draw image from glyph atlas
 			if cg.width > 0 && cg.height > 0 {
@@ -207,87 +211,6 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			}
 		}
 	}
-}
-
-// max_visual_height calculates total vertical space from rendered glyphs
-// (Ink extents). Use for tight stacking. Pango provides logical height (`line_height * num_lines`).
-// Captures true visual bottom for Emojis/script fonts extending beyond line height.
-//
-// Algorithm:
-// Iterates glyphs, computes bottom Y (baseline + y_bearing + height), returns max.
-pub fn (mut renderer Renderer) max_visual_height(layout Layout) f32 {
-	// Pango sets layout height based on content.
-	// But we can also compute the bounding box of glyphs to be sure.
-	// However, since we now have multi-line, "max visual height" is essentially the total height.
-	// Iterate to find max Y bottom.
-
-	mut max_y := f32(0)
-	mut min_y := f32(0) // Usually 0 or negative if something sticks out top?
-
-	for item in layout.items {
-		// item.y is baseline.
-		// approximate top/bottom from font height?
-		// Better: check glyphs.
-		font_id := u64(voidptr(item.ft_face))
-		base_y := f32(item.y)
-
-		for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
-			glyph := layout.glyphs[i]
-			// Resolve cache to get bitmap size
-			// We check Bin 0 (standard integer alignment) for metrics.
-			// This might trigger a load if only subpixel bins were used, but ensures consistency.
-
-			// We can skip loading if not cached, just estimating?
-			// But for accurate height we might needs metrics.
-			// Let's rely on cache if present, otherwise ignore?
-			// Actually, let's just use what's loaded or maybe return pango logical height if we had it.
-			// For now, let's compute based on what we find.
-			// Check all 4 bins to see if we have this glyph cached.
-			// This avoids loading a new duplicate glyph if we already have a shifted version,
-			// which serves the same purpose for vertical metrics.
-			mut found := false
-			mut cg := CachedGlyph{}
-
-			for b in 0 .. 4 {
-				k := font_id ^ (((u64(glyph.index) << 2) | u64(b)) << 32)
-				cg = renderer.cache[k] or { continue }
-				found = true
-				break
-			}
-
-			if !found {
-				// Not found in any bin. Load Bin 0 (standard).
-				target_h := int(f32(item.ascent) * renderer.scale_factor)
-				// Bin 0
-				cg = renderer.load_glyph(LoadGlyphConfig{
-					face:          item.ft_face
-					index:         glyph.index
-					target_height: target_h
-					subpixel_bin:  0
-				}) or { CachedGlyph{} }
-				// Cache it
-				k0 := font_id ^ (((u64(glyph.index) << 2) | 0) << 32)
-				renderer.cache[k0] = cg
-			}
-
-			if cg.width > 0 {
-				// Draw Y top = base_y - y_offset - bitmap_top
-				// Draw Y bottom = Draw Y top + height
-
-				glyph_top := base_y - f32(glyph.y_offset) - f32(cg.top)
-				glyph_h := f32(cg.height)
-				glyph_bottom := glyph_top + glyph_h
-
-				if glyph_bottom > max_y {
-					max_y = glyph_bottom
-				}
-			}
-		}
-	}
-
-	// If no glyphs loaded yet, might result in small height, but that's okay for transient frames.
-	// This function is mostly for stacking layouts.
-	return max_y - min_y
 }
 
 // get_atlas_height returns the current height of the internal glyph atlas.

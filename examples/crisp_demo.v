@@ -61,7 +61,7 @@ fn (mut app CrispApp) draw() {
 		app.renderer.draw_layout(layout, 20.0, f32(y_pos))
 
 		// Calculate height
-		height := app.renderer.max_visual_height(layout)
+		height := layout.visual_height
 		y_pos += height + 5.0
 	}
 }
