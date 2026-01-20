@@ -8,7 +8,7 @@ import math
 const win_width = 800
 const win_height = 400
 
-struct SubpixelApp {
+struct SubpixelAniApp {
 mut:
 	ctx         &gg.Context      = unsafe { nil }
 	text_system &vglyph.Context  = unsafe { nil }
@@ -17,7 +17,7 @@ mut:
 }
 
 fn main() {
-	mut app := &SubpixelApp{}
+	mut app := &SubpixelAniApp{}
 	app.ctx = gg.new_context(
 		bg_color:     gg.white
 		width:        win_width
@@ -30,13 +30,13 @@ fn main() {
 	app.ctx.run()
 }
 
-fn init(mut app SubpixelApp) {
+fn init(mut app SubpixelAniApp) {
 	scale := sapp.dpi_scale()
 	app.text_system = vglyph.new_context(scale) or { panic(err) }
 	app.renderer = vglyph.new_renderer(mut app.ctx, scale)
 }
 
-fn frame(mut app SubpixelApp) {
+fn frame(mut app SubpixelAniApp) {
 	app.ctx.begin()
 	app.draw()
 	app.ctx.end()
@@ -49,7 +49,7 @@ fn frame(mut app SubpixelApp) {
 	}
 }
 
-fn (mut app SubpixelApp) draw() {
+fn (mut app SubpixelAniApp) draw() {
 	start_x := 50.0 + app.x_pos
 
 	// 1. Subpixel Positioned (Smooth)
