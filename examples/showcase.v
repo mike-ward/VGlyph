@@ -943,232 +943,55 @@ fn (mut app ShowcaseApp) create_direct_api_section(width f32) {
 	mut code_runs := []vglyph.StyleRun{}
 
 	// Helper for syntax highlighting
-
 	fn_color := gg.Color{120, 220, 255, 255} // Blue (Functions/Types)
 	str_color := gg.Color{150, 255, 150, 255} // Green (Strings)
 	num_color := gg.Color{180, 160, 255, 255} // Purple (Numbers/Consts)
 	code_font := 'Mono 16'
 
-	// Line 1: ts.draw_text(100, 100, 'Hello V!', vglyph.TextConfig{
-	code_runs << vglyph.StyleRun{
-		text:  'app.ts.'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  'draw_text'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     fn_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '('
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '100'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '100'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  "'Hello V!'"
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     str_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', vglyph.'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  'TextConfig'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     fn_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '{\n'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
+	mut add_token := fn [mut code_runs, code_font] (text string, color gg.Color) {
+		code_runs << vglyph.StyleRun{
+			text:  text
+			style: vglyph.TextStyle{
+				font_name: code_font
+				color:     color
+			}
 		}
 	}
 
-	// Line 2:     style: vglyph.TextStyle{
-	code_runs << vglyph.StyleRun{
-		text:  '    style: vglyph.'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  'TextStyle'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     fn_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '{\n'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
+	add_token('app.ts.', color_text)
+	add_token('draw_text', fn_color)
+	add_token('(', color_text)
+	add_token('100', num_color)
+	add_token(', ', color_text)
+	add_token('100', num_color)
+	add_token(', ', color_text)
+	add_token("'Hello V!'", str_color)
+	add_token(', vglyph.', color_text)
+	add_token('TextConfig', fn_color)
+	add_token('{\n', color_text)
 
-	// Line 3:         font_name: 'Sans Bold Italic 24'
-	code_runs << vglyph.StyleRun{
-		text:  '        font_name: '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  "'Sans Bold Italic 24'"
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     str_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '\n'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
+	add_token('    style: vglyph.', color_text)
+	add_token('TextStyle', fn_color)
+	add_token('{\n', color_text)
 
-	// Line 4:         color: gg.Color{255, 200, 100, 255}
-	code_runs << vglyph.StyleRun{
-		text:  '        color: gg.'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  'Color'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     fn_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '{'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '255'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '200'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '100'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  ', '
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '255'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     num_color
-		}
-	}
-	code_runs << vglyph.StyleRun{
-		text:  '}\n'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
+	add_token('        font_name: ', color_text)
+	add_token("'Sans Bold Italic 24'", str_color)
+	add_token('\n', color_text)
 
-	// Line 6:     }
-	code_runs << vglyph.StyleRun{
-		text:  '    }\n'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
-	// Line 7: })
-	code_runs << vglyph.StyleRun{
-		text:  '})'
-		style: vglyph.TextStyle{
-			font_name: code_font
-			color:     color_text
-		}
-	}
+	add_token('        color: gg.', color_text)
+	add_token('Color', fn_color)
+	add_token('{', color_text)
+	add_token('255', num_color)
+	add_token(', ', color_text)
+	add_token('200', num_color)
+	add_token(', ', color_text)
+	add_token('100', num_color)
+	add_token(', ', color_text)
+	add_token('255', num_color)
+	add_token('}\n', color_text)
+
+	add_token('    }\n', color_text)
+	add_token('})', color_text)
 
 	section.layouts << app.ts.layout_rich_text(vglyph.RichText{ runs: code_runs }, vglyph.TextConfig{
 		block: vglyph.BlockStyle{
@@ -1237,129 +1060,13 @@ fn frame(mut app ShowcaseApp) {
 
 			current_y += 60
 		}
+
 		if section.title == 'LCD Subpixel Antialiasing' {
-			// Animate subpixel_x
-			app.subpixel_x += 0.05 // Very slow motion
-			if app.subpixel_x > 50.0 {
-				app.subpixel_x = 0.0
-			}
-
-			// Draw Description
-			desc_layout := section.layouts[0]
-			app.ts.draw_layout(desc_layout, 50, current_y)
-			current_y += desc_layout.visual_height + 20
-
-			// 1. Smooth
-			layout_smooth := section.layouts[1]
-			app.ts.draw_layout(layout_smooth, 50 + app.subpixel_x, current_y)
-			current_y += layout_smooth.visual_height + 20
-
-			// 2. Integer Snapped
-			layout_snapped := section.layouts[2]
-			snapped_x := math.round(50 + app.subpixel_x)
-			app.ts.draw_layout(layout_snapped, f32(snapped_x), current_y)
-			current_y += layout_snapped.visual_height + 20
+			current_y = app.draw_subpixel_demo(section, current_y)
 		} else if section.title == 'Direct Text Rendering' {
-			// standard Description
-			desc_layout := section.layouts[0]
-			app.ts.draw_layout(desc_layout, 50, current_y)
-			current_y += desc_layout.visual_height + 40
-
-			// Code Block with Background
-			code_layout := section.layouts[1]
-
-			// Draw nice dark code background
-			padding := f32(15.0)
-			bg_rect_x := f32(50) - padding
-			bg_rect_y := current_y - padding
-			bg_rect_w := f32(app.window_w - 100) + (padding * 2)
-			bg_rect_h := code_layout.visual_height + (padding * 2)
-
-			app.ctx.draw_rect_filled(bg_rect_x, bg_rect_y, bg_rect_w, bg_rect_h, gg.Color{30, 30, 35, 255})
-			app.ctx.draw_rect_empty(bg_rect_x, bg_rect_y, bg_rect_w, bg_rect_h, gg.Color{60, 60, 70, 255})
-
-			app.ts.draw_layout(code_layout, 50, current_y)
-			current_y += code_layout.visual_height + 40 // Extra spacing after code block
-
-			// Result
-			res_layout := section.layouts[2]
-			app.ts.draw_layout(res_layout, 50, current_y)
-			current_y += res_layout.visual_height + 20
+			current_y = app.draw_direct_api_demo(section, current_y)
 		} else if section.title == 'Hit Testing' {
-			// Update the Y position for event handling sync
-			app.interactive_y = current_y
-
-			// Draw Selection Backgrounds
-			if app.select_start != -1 && app.cursor_idx != app.select_start {
-				start := if app.select_start < app.cursor_idx {
-					app.select_start
-				} else {
-					app.cursor_idx
-				}
-				end := if app.select_start < app.cursor_idx {
-					app.cursor_idx
-				} else {
-					app.select_start
-				}
-
-				rects := app.interactive_layout.get_selection_rects(start, end)
-				for r in rects {
-					app.ctx.draw_rect_filled(50 + r.x, current_y + r.y, r.width, r.height,
-						gg.Color{50, 50, 200, 100})
-				}
-			}
-
-			// Render the text
-			app.ts.draw_layout(app.interactive_layout, 50, current_y)
-
-			// Draw Cursor
-			mut cx := f32(0)
-			mut cy := f32(0)
-			mut found := false
-
-			for line in app.interactive_layout.lines {
-				if app.cursor_idx >= line.start_index
-					&& app.cursor_idx <= line.start_index + line.length {
-					for cr in app.interactive_layout.char_rects {
-						if cr.index == app.cursor_idx {
-							cx = cr.rect.x
-							cy = cr.rect.y
-							found = true
-							break
-						}
-					}
-					if !found {
-						// End of line fallback
-						if app.cursor_idx == line.start_index + line.length {
-							cx = line.rect.x + line.rect.width
-							cy = line.rect.y
-							found = true
-						}
-					}
-				}
-				if found {
-					break
-				}
-			}
-
-			if !found && app.interactive_layout.lines.len > 0 {
-				last_line := app.interactive_layout.lines.last()
-				if app.cursor_idx >= last_line.start_index + last_line.length {
-					cx = last_line.rect.x + last_line.rect.width
-					cy = last_line.rect.y
-				} else if app.cursor_idx == 0 {
-					first_line := app.interactive_layout.lines[0]
-					cx = first_line.rect.x
-					cy = first_line.rect.y
-				}
-			}
-
-			if app.interactive_layout.lines.len > 0 {
-				h := app.interactive_layout.lines[0].rect.height
-				app.ctx.draw_rect_filled(50 + cx, current_y + cy, 2, h, gg.red)
-			}
-
-			current_y += app.interactive_layout.visual_height + 20
+			current_y = app.draw_interactive_demo(current_y)
 		} else {
 			// Draw Layouts normally for all other sections
 			for layout in section.layouts {
@@ -1389,7 +1096,6 @@ fn frame(mut app ShowcaseApp) {
 
 	// Accessibility / Atlas Commit
 	app.ts.commit()
-
 	app.ctx.end()
 }
 
@@ -1456,27 +1162,8 @@ fn on_event(e &gg.Event, mut app ShowcaseApp) {
 				app.scroll_y = app.max_scroll
 			}
 		}
-		.mouse_down {
-			local_x := e.mouse_x - 50.0
-			local_y := e.mouse_y - app.interactive_y
-
-			if local_y >= -50 && local_y <= app.interactive_layout.visual_height + 50 {
-				idx := app.interactive_layout.get_closest_offset(f32(local_x), f32(local_y))
-				app.cursor_idx = idx
-				app.select_start = idx
-				app.is_dragging = true
-			}
-		}
-		.mouse_up {
-			app.is_dragging = false
-		}
-		.mouse_move {
-			if app.is_dragging {
-				local_x := e.mouse_x - 50.0
-				local_y := e.mouse_y - app.interactive_y
-				app.cursor_idx = app.interactive_layout.get_closest_offset(f32(local_x),
-					f32(local_y))
-			}
+		.mouse_down, .mouse_up, .mouse_move {
+			app.handle_interactive_event(e)
 		}
 		.resized, .restored, .resumed {
 			app.window_w = e.window_width
@@ -1486,5 +1173,162 @@ fn on_event(e &gg.Event, mut app ShowcaseApp) {
 			}
 		}
 		else {}
+	}
+}
+
+fn (mut app ShowcaseApp) draw_subpixel_demo(section ShowcaseSection, y f32) f32 {
+	mut current_y := y
+	// Animate subpixel_x
+	app.subpixel_x += 0.05 // Very slow motion
+	if app.subpixel_x > 50.0 {
+		app.subpixel_x = 0.0
+	}
+
+	// Draw Description
+	desc_layout := section.layouts[0]
+	app.ts.draw_layout(desc_layout, 50, current_y)
+	current_y += desc_layout.visual_height + 20
+
+	// 1. Smooth
+	layout_smooth := section.layouts[1]
+	app.ts.draw_layout(layout_smooth, 50 + app.subpixel_x, current_y)
+	current_y += layout_smooth.visual_height + 20
+
+	// 2. Integer Snapped
+	layout_snapped := section.layouts[2]
+	snapped_x := math.round(50 + app.subpixel_x)
+	app.ts.draw_layout(layout_snapped, f32(snapped_x), current_y)
+	current_y += layout_snapped.visual_height + 20
+
+	return current_y
+}
+
+fn (mut app ShowcaseApp) draw_direct_api_demo(section ShowcaseSection, y f32) f32 {
+	mut current_y := y
+	// standard Description
+	desc_layout := section.layouts[0]
+	app.ts.draw_layout(desc_layout, 50, current_y)
+	current_y += desc_layout.visual_height + 40
+
+	// Code Block with Background
+	code_layout := section.layouts[1]
+
+	// Draw nice dark code background
+	padding := f32(15.0)
+	bg_rect_x := f32(50) - padding
+	bg_rect_y := current_y - padding
+	bg_rect_w := f32(app.window_w - 100) + (padding * 2)
+	bg_rect_h := code_layout.visual_height + (padding * 2)
+
+	app.ctx.draw_rect_filled(bg_rect_x, bg_rect_y, bg_rect_w, bg_rect_h, color_code_bg)
+	app.ctx.draw_rect_empty(bg_rect_x, bg_rect_y, bg_rect_w, bg_rect_h, color_code_border)
+
+	app.ts.draw_layout(code_layout, 50, current_y)
+	current_y += code_layout.visual_height + 40 // Extra spacing after code block
+
+	// Result
+	res_layout := section.layouts[2]
+	app.ts.draw_layout(res_layout, 50, current_y)
+	current_y += res_layout.visual_height + 20
+
+	return current_y
+}
+
+fn (mut app ShowcaseApp) draw_interactive_demo(y f32) f32 {
+	mut current_y := y
+	// Update the Y position for event handling sync
+	app.interactive_y = current_y
+
+	// Draw Selection Backgrounds
+	if app.select_start != -1 && app.cursor_idx != app.select_start {
+		start := if app.select_start < app.cursor_idx {
+			app.select_start
+		} else {
+			app.cursor_idx
+		}
+		end := if app.select_start < app.cursor_idx {
+			app.cursor_idx
+		} else {
+			app.select_start
+		}
+
+		rects := app.interactive_layout.get_selection_rects(start, end)
+		for r in rects {
+			app.ctx.draw_rect_filled(50 + r.x, current_y + r.y, r.width, r.height, gg.Color{50, 50, 200, 100})
+		}
+	}
+
+	// Render the text
+	app.ts.draw_layout(app.interactive_layout, 50, current_y)
+
+	// Draw Cursor
+	mut cx := f32(0)
+	mut cy := f32(0)
+	mut found := false
+
+	for line in app.interactive_layout.lines {
+		if app.cursor_idx >= line.start_index && app.cursor_idx <= line.start_index + line.length {
+			for cr in app.interactive_layout.char_rects {
+				if cr.index == app.cursor_idx {
+					cx = cr.rect.x
+					cy = cr.rect.y
+					found = true
+					break
+				}
+			}
+			if !found {
+				// End of line fallback
+				if app.cursor_idx == line.start_index + line.length {
+					cx = line.rect.x + line.rect.width
+					cy = line.rect.y
+					found = true
+				}
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if !found && app.interactive_layout.lines.len > 0 {
+		last_line := app.interactive_layout.lines.last()
+		if app.cursor_idx >= last_line.start_index + last_line.length {
+			cx = last_line.rect.x + last_line.rect.width
+			cy = last_line.rect.y
+		} else if app.cursor_idx == 0 {
+			first_line := app.interactive_layout.lines[0]
+			cx = first_line.rect.x
+			cy = first_line.rect.y
+		}
+	}
+
+	if app.interactive_layout.lines.len > 0 {
+		h := app.interactive_layout.lines[0].rect.height
+		app.ctx.draw_rect_filled(50 + cx, current_y + cy, 2, h, gg.red)
+	}
+
+	current_y += app.interactive_layout.visual_height + 20
+	return current_y
+}
+
+fn (mut app ShowcaseApp) handle_interactive_event(e &gg.Event) {
+	if e.typ == .mouse_down {
+		local_x := e.mouse_x - 50.0
+		local_y := e.mouse_y - app.interactive_y
+
+		if local_y >= -50 && local_y <= app.interactive_layout.visual_height + 50 {
+			idx := app.interactive_layout.get_closest_offset(f32(local_x), f32(local_y))
+			app.cursor_idx = idx
+			app.select_start = idx
+			app.is_dragging = true
+		}
+	} else if e.typ == .mouse_up {
+		app.is_dragging = false
+	} else if e.typ == .mouse_move {
+		if app.is_dragging {
+			local_x := e.mouse_x - 50.0
+			local_y := e.mouse_y - app.interactive_y
+			app.cursor_idx = app.interactive_layout.get_closest_offset(f32(local_x), f32(local_y))
+		}
 	}
 }
