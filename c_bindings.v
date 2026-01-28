@@ -176,6 +176,18 @@ fn C.FT_Render_Glyph(&C.FT_GlyphSlotRec, i32) int
 fn C.FT_Outline_Translate(&C.FT_Outline, i64, i64) // x, y
 
 pub const ft_render_mode_normal = 0
+pub const ft_render_mode_light = 1
+pub const ft_render_mode_mono = 2
+pub const ft_render_mode_lcd = 3
+pub const ft_render_mode_lcd_v = 4
+
+// FreeType 26.6 fixed-point constants
+pub const ft_fixed_point_shift = 6 // 26.6 fixed-point format
+pub const ft_fixed_point_unit = 64 // 1 pixel in 26.6 format (1 << 6)
+pub const ft_subpixel_unit = 16 // 0.25 pixels in 26.6 format (64 / 4)
+
+// Subpixel positioning constants
+pub const subpixel_bins = 4 // Number of subpixel bins (0, 0.25, 0.5, 0.75)
 
 // Pango & GObject & GLib
 #pkgconfig pango

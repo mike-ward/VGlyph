@@ -16,6 +16,9 @@ fn cubic_hermite(p0 f32, p1 f32, p2 f32, p3 f32, t f32) f32 {
 // it as 4 floats (R, G, B, A) with the RGB channels multiplied by the Alpha.
 // This is essential for correct interpolation of transparent edges.
 fn get_pixel_rgba_premul(src []u8, w int, h int, x int, y int) (f32, f32, f32, f32) {
+	if w <= 0 || h <= 0 {
+		return 0, 0, 0, 0
+	}
 	cx := if x < 0 {
 		0
 	} else if x >= w {
@@ -32,6 +35,11 @@ fn get_pixel_rgba_premul(src []u8, w int, h int, x int, y int) (f32, f32, f32, f
 	}
 	idx := (cy * w + cx) * 4
 
+	// Bounds check before array access
+	if idx < 0 || idx + 3 >= src.len {
+		return 0, 0, 0, 0
+	}
+
 	r := f32(src[idx + 0])
 	g := f32(src[idx + 1])
 	b := f32(src[idx + 2])
@@ -46,7 +54,16 @@ fn get_pixel_rgba_premul(src []u8, w int, h int, x int, y int) (f32, f32, f32, f
 // Scale RGBA bitmap using bicubic interpolation (Catmull-Rom spline)
 // with premultiplied alpha to avoid edge artifacts.
 pub fn scale_bitmap_bicubic(src []u8, src_w int, src_h int, dst_w int, dst_h int) []u8 {
-	mut dst := []u8{len: dst_w * dst_h * 4, init: 0}
+	// Validate dimensions
+	if dst_w <= 0 || dst_h <= 0 || src_w <= 0 || src_h <= 0 {
+		return []u8{}
+	}
+	dst_size := i64(dst_w) * i64(dst_h) * 4
+	if dst_size > max_i32 || dst_size <= 0 {
+		return []u8{} // Size overflow
+	}
+
+	mut dst := []u8{len: int(dst_size), init: 0}
 
 	x_scale := f32(src_w) / f32(dst_w)
 	y_scale := f32(src_h) / f32(dst_h)

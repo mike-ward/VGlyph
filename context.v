@@ -36,7 +36,8 @@ pub fn new_context(scale_factor f32) !&Context {
 	}
 	// Set default resolution to 72 DPI * scale_factor.
 	// This ensures that 1 pt == 1 px (logical).
-	C.pango_ft2_font_map_set_resolution(pango_font_map, 72.0 * scale_factor, 72.0 * scale_factor)
+	safe_scale := if scale_factor > 0 { scale_factor } else { 1.0 }
+	C.pango_ft2_font_map_set_resolution(pango_font_map, 72.0 * safe_scale, 72.0 * safe_scale)
 
 	pango_context := C.pango_font_map_create_context(pango_font_map)
 	if voidptr(pango_context) == unsafe { nil } {
@@ -71,8 +72,8 @@ pub fn new_context(scale_factor f32) !&Context {
 		ft_lib:         ft_lib
 		pango_font_map: pango_font_map
 		pango_context:  pango_context
-		scale_factor:   scale_factor
-		scale_inv:      1.0 / scale_factor
+		scale_factor:   safe_scale
+		scale_inv:      1.0 / safe_scale
 	}
 }
 

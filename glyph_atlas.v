@@ -31,6 +31,13 @@ pub:
 }
 
 fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
+	// Validate dimensions
+	assert w > 0 && h > 0, 'Atlas dimensions must be positive: ${w}x${h}'
+
+	// Overflow check for size calculation (done upfront before any allocation)
+	size := i64(w) * i64(h) * 4
+	assert size > 0 && size <= max_i32, 'Atlas size overflow: ${w}x${h} = ${size} bytes'
+
 	mut img := gg.Image{
 		width:       w
 		height:      h
@@ -48,7 +55,8 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 	img.simg = sg.make_image(&desc)
 	img.simg_ok = true
 	img.id = ctx.cache_image(img)
-	img.data = unsafe { malloc(w * h * 4) }
+	img.data = unsafe { vcalloc(int(size)) } // Zero-init to avoid visual artifacts
+	assert img.data != unsafe { nil }, 'Failed to allocate atlas memory: ${size} bytes'
 
 	return GlyphAtlas{
 		image:      img
@@ -125,17 +133,15 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 
 		// Shift amount in 26.6 fixed point
 		// bin 0..3 corresponds to 0, 0.25, 0.5, 0.75 pixels.
-		// 1 pixel = 64 units. 0.25 pixels = 16 units.
-		shift := i64(cfg.subpixel_bin * 16)
+		shift := i64(cfg.subpixel_bin * ft_subpixel_unit)
 
 		C.FT_Outline_Translate(&glyph.outline, shift, 0)
 
 		// Now Render
-		// 3 is LCD, 0 is NORMAL
 		render_mode := if is_high_dpi {
-			3 // FT_RENDER_MODE_LCD
+			ft_render_mode_lcd
 		} else {
-			0 // FT_RENDER_MODE_NORMAL
+			ft_render_mode_normal
 		}
 		// We use the integer values directly or we should add them to c_bindings.v
 
@@ -188,8 +194,15 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 	mut width := int(bmp.width)
 	mut height := int(bmp.rows)
 	channels := 4
-	length := width * height * channels
-	mut data := unsafe { bmp.buffer.vbytes(length).clone() }
+
+	// Calculate output buffer size (always RGBA)
+	out_length := i64(width) * i64(height) * i64(channels)
+	if out_length > max_i32 || out_length <= 0 {
+		return error('Bitmap size overflow: ${width}x${height}')
+	}
+
+	// Allocate output buffer - don't clone from input as FT buffer layout varies by pixel mode
+	mut data := []u8{len: int(out_length)}
 
 	match bmp.pixel_mode {
 		u8(C.FT_PIXEL_MODE_GRAY) {
@@ -249,6 +262,9 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 		}
 		u8(C.FT_PIXEL_MODE_LCD) {
 			// FreeType LCD bitmaps are 3x wider (physical subpixels)
+			if width < 3 {
+				return error('Invalid LCD bitmap width: ${width}')
+			}
 			logical_width := width / 3
 
 			// Re-allocate data for correct logical dimensions
@@ -302,7 +318,7 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 			// for bitmap fonts like Noto Color Emoji which report native size).
 
 			y_ppem := int(ft_face.size.metrics.y_ppem)
-			ascender := int(ft_face.size.metrics.ascender) >> 6 // 26.6 fixed point to pixels
+			ascender := int(ft_face.size.metrics.ascender) >> ft_fixed_point_shift
 
 			target_size := if target_height > 0 {
 				target_height
@@ -349,6 +365,14 @@ pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(Cac
 	glyph_w := bmp.width
 	glyph_h := bmp.height
 
+	// Validate glyph dimensions don't exceed atlas max size
+	if glyph_w > atlas.max_height || glyph_h > atlas.max_height {
+		return error('Glyph dimensions (${glyph_w}x${glyph_h}) exceed max atlas size (${atlas.max_height})')
+	}
+	if glyph_w <= 0 || glyph_h <= 0 {
+		return CachedGlyph{}, false // Empty glyph, nothing to insert
+	}
+
 	// Move to next row if needed
 	if atlas.cursor_x + glyph_w > atlas.width {
 		atlas.cursor_x = 0
@@ -370,8 +394,8 @@ pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(Cac
 
 			// Zero out data to avoid visual artifacts from old glyphs?
 			// Doing so is safer but slower. Let's do it.
-			size := atlas.width * atlas.height * 4
-			unsafe { vmemset(atlas.image.data, 0, size) }
+			size := i64(atlas.width) * i64(atlas.height) * 4
+			unsafe { vmemset(atlas.image.data, 0, int(size)) }
 		} else {
 			// Linear doubling of height
 			new_height := if atlas.height == 0 { 1024 } else { atlas.height * 2 }
@@ -412,19 +436,27 @@ pub fn (mut atlas GlyphAtlas) grow(new_height int) {
 	}
 	log.info('Growing glyph atlas from ${atlas.height} to ${new_height}')
 
-	old_size := atlas.width * atlas.height * 4
-	new_size := atlas.width * new_height * 4
+	old_size := i64(atlas.width) * i64(atlas.height) * 4
+	new_size := i64(atlas.width) * i64(new_height) * 4
 
-	mut new_data := unsafe { vcalloc(new_size) } // Allocate memory for the texture data (zero-initialized)
-	// Using vcalloc is critical to avoid "black rectangle" artifacts from uninitialized memory.
+	// Overflow check
+	if new_size > max_i32 || new_size <= 0 {
+		log.error('${@FILE_LINE}: Atlas grow size overflow: ${atlas.width}x${new_height}')
+		return
+	}
+
+	mut new_data := unsafe { vcalloc(int(new_size)) }
+	if new_data == unsafe { nil } {
+		log.error('${@FILE_LINE}: Failed to allocate atlas memory: ${new_size} bytes')
+		return
+	}
 
 	// Copy old data
 	unsafe {
-		vmemcpy(new_data, atlas.image.data, old_size)
+		vmemcpy(new_data, atlas.image.data, int(old_size))
 		// Zero out the new part (optional, but good for debugging)
-		// Pointer arithmetic must be done carefully
 		dest_ptr := &u8(new_data) + old_size
-		vmemset(dest_ptr, 0, new_size - old_size)
+		vmemset(dest_ptr, 0, int(new_size - old_size))
 		free(atlas.image.data)
 	}
 	atlas.image.data = new_data
@@ -448,6 +480,15 @@ pub fn (mut atlas GlyphAtlas) grow(new_height int) {
 }
 
 fn copy_bitmap_to_atlas(mut atlas GlyphAtlas, bmp Bitmap, x int, y int) {
+	// Bounds validation
+	if x < 0 || y < 0 || x + bmp.width > atlas.width || y + bmp.height > atlas.height {
+		log.error('${@FILE_LINE}: Bitmap copy out of bounds: pos(${x},${y}) size(${bmp.width}x${bmp.height}) atlas(${atlas.width}x${atlas.height})')
+		return
+	}
+	if bmp.width <= 0 || bmp.height <= 0 || bmp.data.len == 0 {
+		return
+	}
+
 	row_bytes := usize(bmp.width * 4)
 	for row in 0 .. bmp.height {
 		unsafe {

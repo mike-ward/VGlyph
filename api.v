@@ -188,155 +188,110 @@ fn (mut ts TextSystem) get_or_create_layout(text string, cfg TextConfig) !&Cache
 
 // Internal Helpers
 
-pub fn (ts TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
-	// FNV-1a 64-bit hash
-	mut hash := u64(14695981039346656037)
-	prime := u64(1099511628211)
+// FNV-1a 64-bit hash constants
+const fnv_offset_basis = u64(14695981039346656037)
+const fnv_prime = u64(1099511628211)
 
-	// Hash text (optimization: use unsafe pointer access to skip bounds checks)
+// fnv_hash_string hashes a string into an existing hash value using FNV-1a
+@[inline]
+fn fnv_hash_string(h u64, s string) u64 {
+	mut hash := h
 	unsafe {
-		mut ptr := text.str
-		end := ptr + text.len
+		mut ptr := s.str
+		end := ptr + s.len
 		for ptr < end {
 			hash ^= u64(*ptr)
-			hash *= prime
+			hash *= fnv_prime
 			ptr++
 		}
 	}
+	return hash
+}
+
+// fnv_hash_u64 hashes a u64 value into an existing hash
+@[inline]
+fn fnv_hash_u64(h u64, v u64) u64 {
+	mut hash := h
+	hash ^= v
+	hash *= fnv_prime
+	return hash
+}
+
+// fnv_hash_f32 hashes a f32 value into an existing hash
+@[inline]
+fn fnv_hash_f32(h u64, v f32) u64 {
+	return fnv_hash_u64(h, math.f32_bits(v))
+}
+
+// fnv_hash_color hashes a gg.Color into an existing hash
+@[inline]
+fn fnv_hash_color(h u64, c gg.Color) u64 {
+	mut hash := h
+	hash = fnv_hash_u64(hash, u64(c.r))
+	hash = fnv_hash_u64(hash, u64(c.g))
+	hash = fnv_hash_u64(hash, u64(c.b))
+	hash = fnv_hash_u64(hash, u64(c.a))
+	return hash
+}
+
+fn (ts &TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
+	mut hash := fnv_offset_basis
+
+	// Hash text
+	hash = fnv_hash_string(hash, text)
+
 	// Separator
-	hash ^= u64(124) // '|'
-	hash *= prime
+	hash = fnv_hash_u64(hash, u64(124)) // '|'
 
 	// Hash TextStyle
-	// font_name
-	unsafe {
-		mut ptr := cfg.style.font_name.str
-		end := ptr + cfg.style.font_name.len
-		for ptr < end {
-			hash ^= u64(*ptr)
-			hash *= prime
-			ptr++
-		}
-	}
-	// size
-	hash ^= math.f32_bits(cfg.style.size)
-	hash *= prime
-
-	// Color
-	hash ^= u64(cfg.style.color.r)
-	hash *= prime
-	hash ^= u64(cfg.style.color.g)
-	hash *= prime
-	hash ^= u64(cfg.style.color.b)
-	hash *= prime
-	hash ^= u64(cfg.style.color.a)
-	hash *= prime
-
-	// Bg Color
-	hash ^= u64(cfg.style.bg_color.r)
-	hash *= prime
-	hash ^= u64(cfg.style.bg_color.g)
-	hash *= prime
-	hash ^= u64(cfg.style.bg_color.b)
-	hash *= prime
-	hash ^= u64(cfg.style.bg_color.a)
-	hash *= prime
+	hash = fnv_hash_string(hash, cfg.style.font_name)
+	hash = fnv_hash_f32(hash, cfg.style.size)
+	hash = fnv_hash_color(hash, cfg.style.color)
+	hash = fnv_hash_color(hash, cfg.style.bg_color)
 
 	if cfg.style.underline {
-		hash ^= 1
-		hash *= prime
+		hash = fnv_hash_u64(hash, 1)
 	}
 	if cfg.style.strikethrough {
-		hash ^= 2
-		hash *= prime
+		hash = fnv_hash_u64(hash, 2)
 	}
 
-	// Features (Pointer or Content)
+	// Features
 	if cfg.style.features != unsafe { nil } {
-		// We should hash the content of features if possible, or at least the pointer if we assume immutability/uniqueness.
-		// For now, let's hash the content to be safe and correct.
-		// NOTE: This might be slow if features are large, but usually they are small.
-		unsafe {
-			// Iterate opentype_features
-			for f in cfg.style.features.opentype_features {
-				// tag is string
-				mut ptr := f.tag.str
-				end := ptr + f.tag.len
-				for ptr < end {
-					hash ^= u64(*ptr)
-					hash *= prime
-					ptr++
-				}
-				hash ^= u64(f.value)
-				hash *= prime
-			}
-			// Iterate variation_axes
-			for a in cfg.style.features.variation_axes {
-				mut ptr := a.tag.str
-				end := ptr + a.tag.len
-				for ptr < end {
-					hash ^= u64(*ptr)
-					hash *= prime
-					ptr++
-				}
-				hash ^= math.f32_bits(a.value)
-				hash *= prime
-			}
+		for f in cfg.style.features.opentype_features {
+			hash = fnv_hash_string(hash, f.tag)
+			hash = fnv_hash_u64(hash, u64(f.value))
+		}
+		for a in cfg.style.features.variation_axes {
+			hash = fnv_hash_string(hash, a.tag)
+			hash = fnv_hash_f32(hash, a.value)
 		}
 	}
 
 	// Inline Object
 	if cfg.style.object != unsafe { nil } {
-		unsafe {
-			// Hash object ID
-			mut ptr := cfg.style.object.id.str
-			end := ptr + cfg.style.object.id.len
-			for ptr < end {
-				hash ^= u64(*ptr)
-				hash *= prime
-				ptr++
-			}
-			// Hash dimensions/offset to be safe
-			hash ^= math.f32_bits(cfg.style.object.width)
-			hash *= prime
-			hash ^= math.f32_bits(cfg.style.object.height)
-			hash *= prime
-			hash ^= math.f32_bits(cfg.style.object.offset)
-			hash *= prime
-		}
+		hash = fnv_hash_string(hash, cfg.style.object.id)
+		hash = fnv_hash_f32(hash, cfg.style.object.width)
+		hash = fnv_hash_f32(hash, cfg.style.object.height)
+		hash = fnv_hash_f32(hash, cfg.style.object.offset)
 	}
 
 	// Hash BlockStyle
-	// width
-	hash ^= math.f32_bits(cfg.block.width)
-	hash *= prime
+	hash = fnv_hash_f32(hash, cfg.block.width)
+	hash = fnv_hash_f32(hash, cfg.block.indent)
+	hash = fnv_hash_u64(hash, u64(cfg.block.align))
+	hash = fnv_hash_u64(hash, u64(cfg.block.wrap))
 
-	// indent
-	hash ^= math.f32_bits(cfg.block.indent)
-	hash *= prime
-
-	// align
-	hash ^= u64(cfg.block.align)
-	hash *= prime
-
-	// wrap
-	hash ^= u64(cfg.block.wrap)
-	hash *= prime
-
-	// tabs
 	for t in cfg.block.tabs {
-		hash ^= u64(t)
-		hash *= prime
+		hash = fnv_hash_u64(hash, u64(t))
 	}
 
 	if cfg.use_markup {
-		hash ^= 4
-		hash *= prime
+		hash = fnv_hash_u64(hash, 4)
 	}
 
 	if cfg.no_hit_testing {
-		hash ^= 8
-		hash *= prime
+		hash = fnv_hash_u64(hash, 8)
 	}
 
 	return hash

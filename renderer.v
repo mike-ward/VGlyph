@@ -25,25 +25,27 @@ mut:
 
 pub fn new_renderer(mut ctx gg.Context, scale_factor f32) &Renderer {
 	mut atlas := new_glyph_atlas(mut ctx, 1024, 1024) // 1024x1024 default atlas
+	safe_scale := if scale_factor > 0 { scale_factor } else { 1.0 }
 	return &Renderer{
 		ctx:          ctx
 		atlas:        atlas
 		sampler:      create_linear_sampler()
 		cache:        map[u64]CachedGlyph{}
-		scale_factor: scale_factor
-		scale_inv:    1.0 / scale_factor
+		scale_factor: safe_scale
+		scale_inv:    1.0 / safe_scale
 	}
 }
 
 pub fn new_renderer_atlas_size(mut ctx gg.Context, width int, height int, scale_factor f32) &Renderer {
 	mut atlas := new_glyph_atlas(mut ctx, width, height)
+	safe_scale := if scale_factor > 0 { scale_factor } else { 1.0 }
 	return &Renderer{
 		ctx:          ctx
 		atlas:        atlas
 		sampler:      create_linear_sampler()
 		cache:        map[u64]CachedGlyph{}
-		scale_factor: scale_factor
-		scale_inv:    1.0 / scale_factor
+		scale_factor: safe_scale
+		scale_inv:    1.0 / safe_scale
 	}
 }
 
@@ -104,6 +106,9 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 		}
 
 		for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
+			if i < 0 || i >= layout.glyphs.len {
+				continue
+			}
 			glyph := layout.glyphs[i]
 			// Check for unknown glyph flag
 			if (glyph.index & pango_glyph_unknown_flag) != 0 {
@@ -128,7 +133,7 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			// Separate into integer part (for placement) and subpixel bin (for glyph selection)
 			draw_origin_x := math.floor(snapped_phys_x)
 			frac_x := snapped_phys_x - draw_origin_x
-			bin := int(frac_x * 4.0 + 0.1) & 3 // +0.1 for float safety
+			bin := int(frac_x * f32(subpixel_bins) + 0.1) & (subpixel_bins - 1) // +0.1 for float safety
 
 			// Key includes the bin
 			// (glyph.index << 2) | bin
@@ -228,6 +233,9 @@ pub fn (mut renderer Renderer) debug_insert_bitmap(bmp Bitmap, left int, top int
 
 // get_or_load_glyph retrieves a glyph from the cache or loads it from FreeType.
 fn (mut renderer Renderer) get_or_load_glyph(item Item, glyph Glyph, bin int) !CachedGlyph {
+	if item.ft_face == unsafe { nil } {
+		return error('Invalid font face')
+	}
 	font_id := u64(voidptr(item.ft_face))
 
 	// Key includes the bin
@@ -310,6 +318,9 @@ pub fn (mut renderer Renderer) draw_layout_rotated(layout Layout, x f32, y f32, 
 		}
 
 		for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
+			if i < 0 || i >= layout.glyphs.len {
+				continue
+			}
 			glyph := layout.glyphs[i]
 			if (glyph.index & pango_glyph_unknown_flag) != 0 {
 				continue
@@ -321,7 +332,8 @@ pub fn (mut renderer Renderer) draw_layout_rotated(layout Layout, x f32, y f32, 
 			// Load Glyph (Bin 0)
 			cg := renderer.get_or_load_glyph(item, glyph, 0) or { CachedGlyph{} }
 
-			if cg.width > 0 && cg.height > 0 {
+			if cg.width > 0 && cg.height > 0 && renderer.atlas.width > 0
+				&& renderer.atlas.height > 0 {
 				scale_inv := renderer.scale_inv
 
 				dst_x := gx + f32(cg.left) * scale_inv

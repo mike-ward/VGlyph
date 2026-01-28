@@ -1,6 +1,7 @@
 module vglyph
 
 import gg
+import math
 
 // hit_test_rect returns the bounding box of the character at (x, y) relative to the layout origin.
 // Returns none if no character is found close enough.
@@ -61,7 +62,7 @@ pub fn (l Layout) get_closest_offset(x f32, y f32) int {
 		line_mid_y := line.rect.y + line.rect.height / 2
 		dist := match true {
 			y >= line.rect.y && y <= line.rect.y + line.rect.height { 0.0 } // Inside
-			else { get_abs(y - line_mid_y) }
+			else { math.abs(y - line_mid_y) }
 		}
 
 		if dist < min_dist_y {
@@ -101,7 +102,7 @@ pub fn (l Layout) get_closest_offset(x f32, y f32) int {
 		for cr in l.char_rects {
 			if cr.index == i {
 				char_mid_x := cr.rect.x + cr.rect.width / 2
-				dist := get_abs(x - char_mid_x)
+				dist := math.abs(x - char_mid_x)
 				if dist < min_dist_x {
 					min_dist_x = dist
 					closest_char_idx = i
@@ -190,8 +191,4 @@ pub fn (l Layout) get_font_name_at_index(index int) string {
 		}
 	}
 	return 'Unknown'
-}
-
-fn get_abs(v f32) f32 {
-	return if v < 0 { -v } else { v }
 }

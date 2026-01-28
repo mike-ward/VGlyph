@@ -652,7 +652,12 @@ fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64, cfg
 
 	// Conditionally include run_text for debug builds
 	$if debug {
-		run_str := unsafe { (text.str + start_index).vstring_with_len(length) }
+		// Bounds check before creating substring
+		run_str := if start_index >= 0 && length >= 0 && start_index + length <= text.len {
+			unsafe { (text.str + start_index).vstring_with_len(length) }
+		} else {
+			''
+		}
 		items << Item{
 			run_text: run_str
 			ft_face:  ft_face
