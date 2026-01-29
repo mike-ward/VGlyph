@@ -2,7 +2,6 @@
 
 The system is designed to decouple **Text Layout** from **Text Rendering**. This
 separation allows for efficient hit-testing and layout calculations without
-separation allows for efficient hit-testing and layout calculations without
 needing an active graphics context, and batched rendering for high performance.
 
 ## External Dependencies

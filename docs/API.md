@@ -112,11 +112,31 @@ bounds of the glyphs, which may differ from logical line height.
 Calculates the logical width of the text without rendering it. Useful for layout
 calculations (e.g., center alignment parent containers).
 
+➡️ `fn (mut ts TextSystem) layout_text(text string, cfg TextConfig) !Layout`
+
+Computes the layout for a string without caching.
+
+➡️ `fn (mut ts TextSystem) layout_text_cached(text string, cfg TextConfig) !Layout`
+
+Computes the layout for a string with caching. Returns cached result if available.
+
 ➡️ `fn (mut ts TextSystem) layout_rich_text(rt RichText, cfg TextConfig) !Layout`
 
 Computes the layout for a `RichText` object. The `rt.runs` are concatenated to
 form the full text. `cfg` provides the base paragraph style (alignment, wrapping,
 default font).
+
+➡️ `fn (mut ts TextSystem) draw_layout(l Layout, x f32, y f32)`
+
+Renders a pre-computed layout at the specified coordinates.
+
+➡️ `fn (mut ts TextSystem) draw_layout_rotated(l Layout, x f32, y f32, angle f32)`
+
+Renders a pre-computed layout rotated by the specified angle (radians).
+
+➡️ `fn (mut ts TextSystem) font_metrics(cfg TextConfig) TextMetrics`
+
+Returns font metrics (ascender, descender, height, line_gap) for the given config.
 
 ➡️ `fn (mut ts TextSystem) update_accessibility(l Layout, x f32, y f32)`
 
@@ -137,11 +157,13 @@ Manually adds a layout to the accessibility tree for the current frame.
 Configuration struct for defining how text should be laid out and styled. It composes `TextStyle`
 and `BlockStyle`.
 
-| Field        | Type         | Default | Description                                          |
-|:-------------|:-------------|:--------|:-----------------------------------------------------|
-| `style`      | `TextStyle`  | `{}`    | Character styling attributes.                        |
-| `block`      | `BlockStyle` | `{}`    | Paragraph layout attributes.                         |
-| `use_markup` | `bool`       | `false` | Enable [Pango Markup](./GUIDES.md#rich-text-markup). |
+| Field            | Type              | Default       | Description                                          |
+|:-----------------|:------------------|:--------------|:-----------------------------------------------------|
+| `style`          | `TextStyle`       | `{}`          | Character styling attributes.                        |
+| `block`          | `BlockStyle`      | `{}`          | Paragraph layout attributes.                         |
+| `use_markup`     | `bool`            | `false`       | Enable [Pango Markup](./GUIDES.md#rich-text-markup). |
+| `no_hit_testing` | `bool`            | `false`       | Disable hit-testing rect calculation.                |
+| `orientation`    | `TextOrientation` | `.horizontal` | Text orientation (`.horizontal`, `.vertical`).       |
 
 ## TextStyle
 
@@ -158,7 +180,7 @@ Defines character-level styling attributes.
 | `underline`         | `bool`           | `false`       | Draw a single underline.                             |
 | `strikethrough`     | `bool`           | `false`       | Draw a strikethrough line.                           |
 | `features`          | `&FontFeatures`  | `nil`         | Advanced typography settings.                        |
-| `object`            | `?InlineObject`  | `none`        | Inline object definition (reserved space).           |
+| `object`            | `&InlineObject`  | `nil`         | Inline object definition (reserved space).           |
 
 ## FontFeatures
 
@@ -214,6 +236,20 @@ A chunk of text with a specific style.
 - `text`: `string`
 - `style`: `TextStyle`
 
+## TextMetrics
+
+➡️ `struct TextMetrics`
+
+Font metrics for a specific configuration. All values in pixels.
+
+| Field      | Type  | Description                                           |
+|:-----------|:------|:------------------------------------------------------|
+| `ascender` | `f32` | Distance from baseline to top of font bounding box.   |
+| `descender`| `f32` | Distance from baseline to bottom of font bounding box.|
+| `height`   | `f32` | Total height (ascender + descender).                  |
+| `line_gap` | `f32` | Recommended spacing between lines.                    |
+
+---
 
 ## Context (Struct)
 
@@ -232,9 +268,12 @@ Performs the "Shaping" process.
 - **Expensive Operation**: Should not be called every frame for the same text.
   Store the result if using `Context` directly.
 
-➡️ `fn new_context() !&Context`
+➡️ `fn new_context(scale_factor f32) !&Context`
 
 Creates a new Pango context.
+
+- **Parameters**:
+    - `scale_factor`: Scale factor for HiDPI displays (e.g., `2.0` for Retina).
 
 ➡️ `fn (mut ctx Context) resolve_font_name(font_desc_str string) string`
 
@@ -303,9 +342,22 @@ Uploads the texture atlas. Same requirement as `TextSystem.commit()`.
 
 Queues the draw commands for a given layout.
 
-➡️ `fn new_renderer(mut ctx gg.Context) &Renderer`
+➡️ `fn new_renderer(mut ctx gg.Context, scale_factor f32) &Renderer`
 
-Creates a renderer with default settings.
+Creates a renderer with default settings (1024x1024 atlas).
+
+- **Parameters**:
+    - `ctx`: A mutable reference to your `gg.Context`.
+    - `scale_factor`: Scale factor for HiDPI displays (e.g., `2.0` for Retina).
+
+➡️ `fn new_renderer_atlas_size(mut ctx gg.Context, w int, h int, scale f32) &Renderer`
+
+Creates a renderer with a custom-sized glyph atlas.
+
+- **Parameters**:
+    - `ctx`: A mutable reference to your `gg.Context`.
+    - `width`, `height`: Atlas dimensions in pixels.
+    - `scale_factor`: Scale factor for HiDPI displays.
 
 ---
 
