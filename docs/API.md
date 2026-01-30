@@ -174,6 +174,7 @@ Defines character-level styling attributes.
 | Field               | Type             | Default       | Description                                          |
 |:--------------------|:-----------------|:--------------|:-----------------------------------------------------|
 | `font_name`         | `string`         | -             | Pango font description (e.g. `'Sans Bold 12'`).      |
+| `typeface`          | `Typeface`       | `.regular`    | Bold/italic override (see Typeface enum).            |
 | `size`              | `f32`            | `0.0`         | Explicit size (points). 0 = use `font_name`.         |
 | `color`             | `gg.Color`       | `black`       | Default text color.                                  |
 | `bg_color`          | `gg.Color`       | `transparent` | Background color (highlight).                        |
@@ -181,6 +182,22 @@ Defines character-level styling attributes.
 | `strikethrough`     | `bool`           | `false`       | Draw a strikethrough line.                           |
 | `features`          | `&FontFeatures`  | `nil`         | Advanced typography settings.                        |
 | `object`            | `&InlineObject`  | `nil`         | Inline object definition (reserved space).           |
+
+## Typeface
+
+➡️ `enum Typeface`
+
+Programmatic control over bold/italic without modifying `font_name` string.
+
+| Value         | Description                                      |
+|:--------------|:-------------------------------------------------|
+| `.regular`    | Default - preserves style from `font_name`.      |
+| `.bold`       | Override weight to bold.                         |
+| `.italic`     | Override style to italic.                        |
+| `.bold_italic`| Override to bold + italic.                       |
+
+**Note**: Variable font `wght` axis (in `FontFeatures`) applies after typeface and can
+override the bold weight.
 
 ## FontFeatures
 
