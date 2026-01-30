@@ -284,6 +284,9 @@ pub fn (mut ctx Context) create_font_description(style TextStyle) &C.PangoFontDe
 	resolved_fam := resolve_family_alias(fam)
 	C.pango_font_description_set_family(desc, resolved_fam.str)
 
+	// Apply typeface (bold/italic override)
+	apply_typeface(desc, style.typeface)
+
 	// Apply variable font axes
 	if unsafe { style.features != nil } && style.features.variation_axes.len > 0 {
 		mut axes_str := ''
@@ -306,4 +309,21 @@ pub fn (mut ctx Context) create_font_description(style TextStyle) &C.PangoFontDe
 	}
 
 	return desc
+}
+
+// apply_typeface sets weight/style on a font description based on Typeface enum.
+fn apply_typeface(desc &C.PangoFontDescription, typeface Typeface) {
+	match typeface {
+		.regular {}
+		.bold {
+			C.pango_font_description_set_weight(desc, .pango_weight_bold)
+		}
+		.italic {
+			C.pango_font_description_set_style(desc, .pango_style_italic)
+		}
+		.bold_italic {
+			C.pango_font_description_set_weight(desc, .pango_weight_bold)
+			C.pango_font_description_set_style(desc, .pango_style_italic)
+		}
+	}
 }

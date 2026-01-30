@@ -245,6 +245,7 @@ fn (ts &TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 
 	// Hash TextStyle
 	hash = fnv_hash_string(hash, cfg.style.font_name)
+	hash = fnv_hash_u64(hash, u64(cfg.style.typeface))
 	hash = fnv_hash_f32(hash, cfg.style.size)
 	hash = fnv_hash_color(hash, cfg.style.color)
 	hash = fnv_hash_color(hash, cfg.style.bg_color)

@@ -79,3 +79,30 @@ fn test_get_cache_key_diff_text() {
 
 	assert key1 != key2
 }
+
+fn test_get_cache_key_diff_typeface() {
+	ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+
+	cfg1 := TextConfig{
+		style: TextStyle{
+			font_name: 'Arial 12'
+			typeface:  .regular
+		}
+	}
+
+	cfg2 := TextConfig{
+		style: TextStyle{
+			font_name: 'Arial 12'
+			typeface:  .bold
+		}
+	}
+
+	key1 := ts.get_cache_key('hello', cfg1)
+	key2 := ts.get_cache_key('hello', cfg2)
+
+	assert key1 != key2
+}

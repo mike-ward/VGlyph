@@ -83,6 +83,44 @@ fn frame(mut app AppStyleDemo) {
 		}
 	}) or { panic(err) }
 
+	// Typeface: Bold
+	app.text_system.draw_text(50, 350, 'Bold via typeface', vglyph.TextConfig{
+		style: vglyph.TextStyle{
+			font_name: 'Sans 20'
+			typeface:  .bold
+		}
+	}) or { panic(err) }
+
+	// Typeface: Italic
+	app.text_system.draw_text(50, 400, 'Italic via typeface', vglyph.TextConfig{
+		style: vglyph.TextStyle{
+			font_name: 'Sans 20'
+			typeface:  .italic
+		}
+	}) or { panic(err) }
+
+	// Typeface: Bold Italic
+	app.text_system.draw_text(50, 450, 'Bold Italic via typeface', vglyph.TextConfig{
+		style: vglyph.TextStyle{
+			font_name: 'Sans 20'
+			typeface:  .bold_italic
+		}
+	}) or { panic(err) }
+
+	// Compare: font_name string vs typeface enum
+	app.text_system.draw_text(50, 500, 'Sans Bold 20 (font_name)', vglyph.TextConfig{
+		style: vglyph.TextStyle{
+			font_name: 'Sans Bold 20'
+		}
+	}) or { panic(err) }
+
+	app.text_system.draw_text(400, 500, 'Sans 20 + .bold (typeface)', vglyph.TextConfig{
+		style: vglyph.TextStyle{
+			font_name: 'Sans 20'
+			typeface:  .bold
+		}
+	}) or { panic(err) }
+
 	app.text_system.commit()
 	app.ctx.end()
 }

@@ -863,9 +863,9 @@ fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle
 		C.pango_attr_list_insert(list, attr)
 	}
 
-	// 5. Font Description (Name, Size, Variations)
-	// Set if font_name is defined OR size is defined.
-	if style.font_name != '' || style.size > 0 {
+	// 5. Font Description (Name, Size, Typeface, Variations)
+	// Set if font_name, size, or typeface is defined.
+	if style.font_name != '' || style.size > 0 || style.typeface != .regular {
 		mut desc := unsafe { &C.PangoFontDescription(nil) }
 
 		if style.font_name != '' {
@@ -886,6 +886,9 @@ fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle
 				resolved_fam := resolve_family_alias(fam)
 				C.pango_font_description_set_family(desc, resolved_fam.str)
 			}
+
+			// Apply typeface (bold/italic override)
+			apply_typeface(desc, style.typeface)
 
 			// Apply Variations
 			if unsafe { style.features != nil } && style.features.variation_axes.len > 0 {

@@ -553,6 +553,8 @@ fn C.pango_font_description_get_variations(&C.PangoFontDescription) &char
 fn C.g_free(voidptr)
 fn C.pango_font_description_set_size(&C.PangoFontDescription, int) // size in Pango units
 fn C.pango_font_description_set_absolute_size(&C.PangoFontDescription, f64)
+fn C.pango_font_description_set_weight(&C.PangoFontDescription, PangoWeight)
+fn C.pango_font_description_set_style(&C.PangoFontDescription, PangoStyle)
 fn C.pango_font_description_get_size(&C.PangoFontDescription) int
 fn C.pango_font_description_get_size_is_absolute(&C.PangoFontDescription) bool
 fn C.pango_font_description_get_set_fields(&C.PangoFontDescription) u16

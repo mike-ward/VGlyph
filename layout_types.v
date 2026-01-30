@@ -101,6 +101,14 @@ pub enum TextOrientation {
 	vertical // Vertical flow, upright characters (for CJK)
 }
 
+// Typeface specifies bold/italic style programmatically without string manipulation.
+pub enum Typeface {
+	regular     // Default - preserves font_name style
+	bold        // Override to bold
+	italic      // Override to italic
+	bold_italic // Override to bold+italic
+}
+
 // TextConfig holds configuration for text layout and rendering.
 pub struct TextConfig {
 pub mut:
@@ -131,6 +139,8 @@ pub:
 	// "[FAMILY-LIST] [STYLE-OPTIONS] [SIZE] [VARIATIONS] [FEATURES]"
 	// Example: "Sans Italic Light 15"
 	font_name string
+	// typeface overrides the weight/style in font_name when not .regular.
+	typeface Typeface = .regular
 	// size overrides the size specified in font_name.
 	// It is specified in points.
 	size     f32
