@@ -414,7 +414,7 @@ pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(Cac
 		} else {
 			// Linear doubling of height
 			new_height := if atlas.height == 0 { 1024 } else { atlas.height * 2 }
-			atlas.grow(new_height)
+			atlas.grow(new_height)!
 		}
 	}
 
