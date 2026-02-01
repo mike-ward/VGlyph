@@ -19,6 +19,24 @@ fn init_gamma_table() [256]u8 {
 	return table
 }
 
+const max_allocation_size = i64(1024 * 1024 * 1024) // 1GB
+
+// check_allocation_size validates width * height * channels won't overflow or exceed limits.
+// Returns validated size or error with specific cause.
+fn check_allocation_size(w int, h int, channels int, location string) !i64 {
+	size := i64(w) * i64(h) * i64(channels)
+	if size <= 0 {
+		return error('invalid allocation size in ${location}: ${w}x${h}x${channels}')
+	}
+	if size > max_i32 {
+		return error('allocation overflow in ${location}: ${size} bytes exceeds max_i32')
+	}
+	if size > max_allocation_size {
+		return error('allocation exceeds 1GB limit in ${location}: ${size} bytes')
+	}
+	return size
+}
+
 pub struct GlyphAtlas {
 pub mut:
 	image      gg.Image
