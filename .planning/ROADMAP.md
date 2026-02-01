@@ -13,7 +13,7 @@ issues. All work targets glyph_atlas.v and layout.v files identified in CONCERNS
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Error Propagation** - Change new_glyph_atlas to return errors
-- [ ] **Phase 2: Memory Safety** - Add null checks and overflow validation
+- [x] **Phase 2: Memory Safety** - Add null checks and overflow validation
 - [ ] **Phase 3: Layout Safety** - Document pointer cast, fix string lifetime
 
 ## Phase Details
@@ -46,7 +46,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 02-01-PLAN.md - Add memory safety with error propagation to grow()
+- [x] 02-01-PLAN.md - Add memory safety with error propagation to grow()
 
 ### Phase 3: Layout Safety
 **Goal**: Pointer cast documented and validated; string lifetime safe
@@ -67,7 +67,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Error Propagation | 1/1 | ✓ Complete | 2026-02-01 |
-| 2. Memory Safety | 0/1 | Ready to execute | - |
+| 2. Memory Safety | 1/1 | ✓ Complete | 2026-02-01 |
 | 3. Layout Safety | 0/? | Not started | - |
 
 ---
