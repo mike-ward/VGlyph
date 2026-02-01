@@ -44,13 +44,17 @@ pub:
 	top    int
 }
 
-fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
+fn new_glyph_atlas(mut ctx gg.Context, w int, h int) !GlyphAtlas {
 	// Validate dimensions
-	assert w > 0 && h > 0, 'Atlas dimensions must be positive: ${w}x${h}'
+	if w <= 0 || h <= 0 {
+		return error('Atlas dimensions must be positive: ${w}x${h}')
+	}
 
 	// Overflow check for size calculation (done upfront before any allocation)
 	size := i64(w) * i64(h) * 4
-	assert size > 0 && size <= max_i32, 'Atlas size overflow: ${w}x${h} = ${size} bytes'
+	if size <= 0 || size > max_i32 {
+		return error('Atlas size overflow: ${w}x${h} = ${size} bytes')
+	}
 
 	mut img := gg.Image{
 		width:       w
@@ -70,7 +74,9 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) GlyphAtlas {
 	img.simg_ok = true
 	img.id = ctx.cache_image(img)
 	img.data = unsafe { vcalloc(int(size)) } // Zero-init to avoid visual artifacts
-	assert img.data != unsafe { nil }, 'Failed to allocate atlas memory: ${size} bytes'
+	if img.data == unsafe { nil } {
+		return error('Failed to allocate atlas memory: ${size} bytes')
+	}
 
 	return GlyphAtlas{
 		image:      img
