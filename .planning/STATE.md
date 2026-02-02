@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-02)
 ## Current Position
 
 Phase: Phase 11 - Cursor Foundation
-Plan: 1 of 2 complete
-Status: In progress
-Last activity: 2026-02-02 - Completed 11-01-PLAN.md (Cursor Position API)
+Plan: 2 of 2 complete
+Status: Phase complete
+Last activity: 2026-02-02 - Completed 11-02-PLAN.md (Cursor Navigation)
 
-Progress: [█░░░░░░░░░] 1/7 phases in progress (Plan 2 remaining)
+Progress: [██░░░░░░░░] 1/7 phases complete (Phase 12 next)
 
 ## Performance Metrics
 
@@ -42,7 +42,12 @@ v1.3 decisions:
 Phase 11-01 decisions:
 - Use Pango C struct members directly (not packed u32) for LogAttr access
 - Cursor position uses cached char_rects with line fallback for edge cases
-- LogAttr array has len = text.len + 1 (position before each char + end)
+- ~~LogAttr array has len = text.len + 1 (position before each char + end)~~ (superseded)
+
+Phase 11-02 decisions:
+- Add log_attr_by_index map for byte-to-logattr lookup (fixes multi-byte/emoji)
+- Cursor movement uses sorted valid position arrays, not byte iteration
+- get_closest_offset returns only valid cursor positions (existing in char_rect_by_index)
 
 ### Pending Todos
 
@@ -50,10 +55,10 @@ None.
 
 ### Blockers/Concerns
 
-None. Cursor position API complete, ready for navigation APIs.
+None. Cursor foundation complete with full navigation support.
 
 ## Session Continuity
 
 Last session: 2026-02-02
-Stopped at: Completed 11-01-PLAN.md (Cursor Position API)
-Resume file: .planning/phases/11-cursor-foundation/11-02-PLAN.md
+Stopped at: Completed 11-02-PLAN.md (Cursor Navigation)
+Resume file: .planning/phases/12-selection/12-PLAN.md (when created)
