@@ -1,582 +1,387 @@
-# Performance Optimization Pitfalls
+# Text Editing Pitfalls — Pango-Based System
 
-**Domain:** Text rendering performance profiling/optimization
-**Project:** VGlyph — V language text rendering (Pango/FreeType/OpenGL)
-**Context:** Adding performance work to safety-hardened (v1.0, v1.1) rendering system
+**Domain:** Text editing on existing Pango rendering
 **Researched:** 2026-02-02
+**Context:** VGlyph v1.3 — adding cursor, selection, mutation, IME to existing text renderer
 
 ## Critical Pitfalls
 
-Mistakes causing rewrites, major performance regressions, or breaking safety guarantees.
+Mistakes causing rewrites or major correctness issues.
 
-### Pitfall 1: Profiling in Debug Mode
+### 1. Byte Index vs Character Index Confusion
 
-**What goes wrong:** Performance measurements taken in debug builds show 5-10x slower
-execution vs release builds due to runtime checks, assertions, and disabled optimizations.
-This leads to optimizing the wrong code paths and setting incorrect performance baselines.
+**What goes wrong:**
+Pango uses UTF-8 byte indices, not character indices. Incrementing index by 1 moves one byte,
+not one visible character. Multi-byte UTF-8 (emoji, non-ASCII) causes cursor to land mid-character,
+corrupting text on mutation or rendering garbage glyphs.
 
-**Why it happens:** Debug builds are the default during development. v1.1 added debug-only
-validation guards (iterator exhaustion, AttrList leak counter, FT state validation) which
-add overhead that doesn't exist in production.
+**Why it happens:**
+- Hit testing returns byte index from `pango_layout_xy_to_index()`
+- Cursor position API (`pango_layout_index_to_pos()`) takes byte index
+- Developer assumes index == character position (works for ASCII, fails elsewhere)
+- Text mutation at byte mid-character corrupts UTF-8 sequence
 
 **Consequences:**
-- Optimize code paths that aren't bottlenecks in release
-- Miss actual bottlenecks masked by debug overhead
-- Performance targets based on misleading data
-- Wasted optimization effort on non-issues
+- Cursor lands inside emoji/accented characters
+- Text insertion corrupts multi-byte sequences
+- Delete operations remove partial characters, leaving invalid UTF-8
+- Pango emits "Invalid UTF-8 string" warnings, refuses to render
 
 **Prevention:**
-- Always profile in release builds (`v -prod`)
-- Baseline measurements MUST be release mode
-- Document which measurements are debug vs release
-- Flag any profiling data collected in debug mode as INVALID
+- **ALWAYS work in byte indices** when calling Pango APIs
+- Use `pango_layout_move_cursor_visually()` for cursor motion (handles grapheme clusters)
+- Use Pango's text attribute APIs to query grapheme boundaries
+- For character counting/indexing, maintain parallel UTF-8 → byte offset mapping
+- **Test early with emoji, accented chars, CJK text** (不 just ASCII)
 
 **Detection:**
-- Check compiler flags before starting profiling
-- Compare debug vs release baseline (should see 5-10x difference)
-- If optimization shows <10% improvement, verify profiling mode
+- Unit test: cursor motion through "🧑‍🌾" (farmer emoji, 11 bytes, 3 codepoints, 1 grapheme)
+- Unit test: delete operation on "é" (NFC vs NFD normalization, 2-4 bytes)
+- Runtime: Pango warnings "Invalid UTF-8 string passed to pango_layout_set_text()"
+- Visual: cursor appears inside emoji or combining character sequence
 
-**Phase guidance:** Phase 1 (instrumentation) must validate release mode before any
-measurements taken.
+**Phase impact:** Foundation phase must establish byte index discipline before mutation.
+
+**Confidence:** HIGH (verified via [Pango Layout docs](https://docs.gtk.org/Pango/class.Layout.html),
+[GNOME discourse](https://discourse.gnome.org/t/pango-indexes-to-string-positions-correctly/15814))
 
 ---
 
-### Pitfall 2: Optimizing Before Profiling (Premature Optimization)
+### 2. Layout Cache Invalidation on Mutation
 
-**What goes wrong:** Implementing "obvious" optimizations based on code inspection rather
-than profiling data. In text rendering, intuition about bottlenecks is often wrong —
-FreeType/Pango have non-obvious performance characteristics.
+**What goes wrong:**
+Existing VGlyph has layout caching (TTL-based). Text mutation changes content but cache entry
+still exists, keyed by old text. Rendering uses stale layout showing pre-mutation text, or worse,
+layout metrics mismatch actual text causing out-of-bounds access.
 
-**Why it happens:** CONCERNS.md lists suspected bottlenecks (atlas reset, cache collisions,
-FreeType metrics, bitmap scaling). Temptation to optimize these directly without validating
-they're actual bottlenecks.
+**Why it happens:**
+- Cache key doesn't account for text mutability (designed for static rendering)
+- Insert/delete doesn't trigger cache eviction for affected layout
+- TTL eviction too slow (stale layout persists for seconds/frames)
+- Developer forgets cache exists when implementing mutation
 
 **Consequences:**
-- Optimize code that's already fast enough
-- Break safety guarantees from v1.0/v1.1 hardening
-- Add complexity without measurable benefit
-- Miss real bottlenecks (e.g., GPU synchronization stalls)
+- Visual: text doesn't update after insert/delete until TTL expires
+- Correctness: cursor position queries use stale metrics, wrong pixel coords
+- Crash: layout line count mismatch, iterator out of bounds
+- Performance: cache hit on wrong data, miss on correct data (cache pollution)
 
 **Prevention:**
-- Profile FIRST with lightweight metrics
-- Require profiling data showing bottleneck before optimization
-- Validate each CONCERNS.md suspected bottleneck with measurements
-- 80/20 rule: focus on top 20% of measured time
+- **Invalidate cache entry on ANY text mutation** (insert, delete, replace)
+- Consider cache key including content hash or mutation sequence number
+- For rich text, invalidate if styled run boundaries change
+- Document cache invalidation contract in mutation APIs
+- Add debug mode: validate cached layout matches current text (expensive check)
 
 **Detection:**
-- Any optimization PR without profiling data justification = RED FLAG
-- Check git history: instrumentation commits MUST precede optimization commits
+- Unit test: insert char, immediately query cursor pos — verify uses new text
+- Unit test: cache hit counter decreases after mutation (proves invalidation)
+- Visual test: type character, verify appears immediately (not on next frame)
+- Stress test: rapid insert/delete, check for stale layout or crash
 
-**Phase guidance:** Phase 2-4 (profiling phases) MUST complete before Phase 5-7
-(optimization phases). No exceptions.
+**Phase impact:** Mutation phase must design invalidation strategy before implementing insert/delete.
+
+**Confidence:** MEDIUM (general caching principle, specific to VGlyph's TTL cache design)
 
 ---
 
-### Pitfall 3: Breaking Correctness for Performance
+### 3. IME Marked Text Range Confusion
 
-**What goes wrong:** Optimization removes safety checks added in v1.0 (error propagation,
-overflow validation, null checks) or v1.1 (iterator exhaustion, AttrList leak detection, FT
-state validation). Text renders faster but crashes or shows visual corruption.
+**What goes wrong:**
+macOS NSTextInputClient protocol methods receive ranges in different coordinate systems:
+`setMarkedText` uses **absolute document positions**, but developer treats as relative to
+marked range. IME composition window appears at wrong location, or text inserted at wrong offset.
 
-**Why it happens:** Safety checks have measurable cost. Hot path operations (glyph
-rasterization, atlas updates) seem like optimization targets. Pressure to hit performance
-targets.
+**Why it happens:**
+- NSTextInputClient docs unclear about absolute vs relative ranges
+- `replacementRange` parameter has dual meaning (NSNotFound = replace current marked, else absolute)
+- Japanese/Chinese IME reconversion passes non-trivial replacementRange
+- Developer tests with English (trivial IME), ships with broken CJK support
 
 **Consequences:**
-- Reintroduce crashes/UB that v1.0/v1.1 fixed
-- Visual corruption (wrong glyphs, missing text)
-- Security vulnerabilities (buffer overflows)
-- Lose all value of previous hardening work
+- IME composition window (candidate list) positioned at wrong screen coords
+- Marked text (underlined composition) inserted at wrong document location
+- Conversion commits to wrong position, corrupting surrounding text
+- CJK users cannot use application (IME completely broken)
 
 **Prevention:**
-- Release-mode safety checks (null checks, overflow validation) are UNTOUCHABLE
-- Debug-only checks can be discussed but require explicit documentation
-- Verify test suite still passes after optimization
-- Run visual regression tests (screenshot comparison)
-- Manual testing with stress cases (emoji-heavy, large fonts, vertical text)
+- **Read "Glaring Hole" article** (see sources) — documents protocol quirks
+- Treat all ranges as absolute document positions unless explicitly NSNotFound
+- Implement `attributedSubstring(forProposedRange:actualRange:)` correctly (returns document substring)
+- Test with Japanese IME reconversion (Kotoeri), not just Roman input
+- Maintain marked range state separately from insertion point
 
 **Detection:**
-- Any optimization removing `if ptr == nil` or overflow check = REQUIRES JUSTIFICATION
-- Test failures after optimization = ROLLBACK IMMEDIATELY
-- Visual artifacts in examples = ROLLBACK IMMEDIATELY
+- Test: Japanese IME, type "kanji", convert — verify composition window location
+- Test: Chinese IME, select previous text, reconvert — verify replacementRange handling
+- Test: Korean IME, rapid typing — verify marked text updates correctly
+- Log all NSTextInputClient method calls with ranges during manual testing
 
-**Phase guidance:** Every optimization phase includes verification step. No merge without
-passing tests + visual validation.
+**Phase impact:** IME phase must understand protocol before implementing any methods.
+
+**Confidence:** HIGH (verified via [NSTextInputClient docs](https://developer.apple.com/documentation/appkit/nstextinputclient),
+[Microsoft blog post](https://learn.microsoft.com/en-us/archive/blogs/rick_schaut/the-glaring-hole-in-the-nstextinputclient-protocol))
 
 ---
 
-### Pitfall 4: Profiling Overhead Slows Production Code
+### 4. Bidirectional Text Cursor Ambiguity
 
-**What goes wrong:** Instrumentation added for profiling (timestamps, counters, event
-logging) remains in production builds. Text rendering becomes slower than baseline due to
-measurement overhead.
+**What goes wrong:**
+At boundaries between LTR and RTL text (e.g., "hello שלום"), a single logical position maps to
+**two visual positions** (strong and weak cursor). Developer implements only one cursor position,
+users cannot access characters at boundaries, or cursor jumps unexpectedly on arrow key.
 
-**Why it happens:** Instrumentation code added without conditional compilation. Forgetting
-to use debug-only guards. "Always-on" metrics sound appealing but have 1-5% CPU overhead.
-
-**Consequences:**
-- Ship slower code than before optimization work
-- User-visible performance regression
-- Defeat entire purpose of optimization milestone
-- Production metrics collection impacts user experience
-
-**Prevention:**
-- ALL profiling instrumentation MUST be behind debug/feature flags
-- Measure baseline → add instrumentation → measure again (should be identical)
-- Use V's conditional compilation (`$if debug { ... }`)
-- Profiling code isolated in separate modules, not mixed with hot paths
-- Continuous profiling (always-on) NOT appropriate for graphics rendering
-
-**Detection:**
-- Compare release build performance before/after instrumentation
-- Instrumentation adds >0.1% overhead = REFACTOR OR REMOVE
-- Search codebase for timing/counter code not behind conditional
-
-**Phase guidance:** Phase 1 (instrumentation) MUST validate zero overhead in release builds.
-Continuous integration should test release performance after every commit.
-
----
-
-### Pitfall 5: GPU-CPU Pipeline Stalls from Synchronous Profiling
-
-**What goes wrong:** Profiling GPU operations (texture uploads, draw calls) with CPU
-timers requires synchronization (glFinish, glGetError). This stalls the pipeline, making
-measured performance 10-100x slower than actual async performance.
-
-**Why it happens:** CPU timing is straightforward; GPU profiling is hard. Calling glFinish()
-to ensure operation completes before stopping timer seems necessary.
+**Why it happens:**
+- Unicode bidirectional algorithm reorders display vs logical positions
+- Pango provides `get_cursor_pos()` returning strong AND weak positions
+- Developer uses only strong cursor, ignoring weak (or vice versa)
+- Arrow key navigation logic assumes visual continuity (doesn't exist at bidi boundaries)
 
 **Consequences:**
-- Profiling data shows "slow" GPU operations that are actually fast
-- Optimize GPU paths unnecessarily
-- Miss actual CPU bottlenecks (layout computation, shaping)
-- Synchronous profiling changes what you're measuring (observer effect)
+- User cannot position cursor at certain boundary positions
+- Right arrow moves left visually (or vice versa) — confusing UX
+- Selection across LTR/RTL boundary appears fragmented or discontinuous
+- Text insertion at boundary goes to unexpected location
 
 **Prevention:**
-- Use GPU query objects (glBeginQuery/glEndQuery) for GPU timing
-- Never call glFinish() in profiling code
-- Separate CPU time (before glDrawArrays) from GPU time (actual rendering)
-- Understand async GPU execution model
-- Profile frame time end-to-end, then isolate bottlenecks
+- **Display both strong and weak cursors** at bidi boundaries (CodeMirror approach)
+- Use `pango_layout_move_cursor_visually()` for arrow keys (handles bidi correctly)
+- Render selection using Pango's rectangle APIs (handles fragmentation)
+- Test with mixed Hebrew/English text, observe strong/weak cursor positions
+- Consider simplification: force LTR directionality for v1 (defer RTL to later phase)
 
 **Detection:**
-- Any profiling code with glFinish() = WRONG
-- GPU operations showing >10ms = likely synchronization artifact
-- Frame time doesn't match sum of component times = pipeline stalls
+- Visual test: render "hello שלום", position cursor between words, observe dual cursors
+- Unit test: arrow key from position 5 (LTR end) — verify moves to position 6 (RTL start)
+- Unit test: selection from position 0 to 10 — verify returns correct rectangles (may be non-contiguous)
 
-**Phase guidance:** Phase 4 (render path profiling) requires GPU query objects, not CPU
-timers. Research GPU profiling methodology before implementation.
+**Phase impact:** Cursor geometry phase must decide strong/weak strategy before API design.
 
----
-
-### Pitfall 6: Microbenchmarks Don't Reflect Real Workloads
-
-**What goes wrong:** Optimize isolated operations (single glyph rasterization, single atlas
-lookup) that perform well in microbenchmarks but don't improve real-world frame time.
-
-**Why it happens:** Microbenchmarks have small working sets that fit in cache. Real
-workloads have cache misses, memory pressure, GPU context switches. Microbenchmark shows 50%
-improvement but user sees 2% improvement.
-
-**Consequences:**
-- Optimization effort wasted on non-representative workloads
-- Real bottlenecks (cache misses, GPU stalls) ignored
-- Complexity increased without user-visible benefit
-- Performance targets based on unrealistic scenarios
-
-**Prevention:**
-- Primary metric: FRAME TIME for realistic text rendering
-- Use example applications (demo.v, stress_demo.v) as benchmarks
-- Stress tests with realistic data (mixed scripts, emoji, variable fonts)
-- Measure full pipeline: layout → rasterize → atlas → render
-- Microbenchmarks only for understanding specific operations
-
-**Detection:**
-- Microbenchmark improvement >10% but frame time improvement <2% = CACHE EFFECT
-- Compare hot loop (1000 glyphs) vs single operation time
-- Profile with working set > L3 cache size (typically >8MB)
-
-**Phase guidance:** Phase 2-4 profile realistic workloads first. Microbenchmarks allowed in
-Phase 5-7 for understanding specific operations, but require real-world validation.
+**Confidence:** HIGH (verified via [Marijn Haverbeke blog](https://marijnhaverbeke.nl/blog/cursor-in-bidi-text.html),
+[Pango Layout docs](https://docs.gtk.org/Pango/class.Layout.html))
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes causing delays, technical debt, or misleading conclusions.
+Mistakes causing delays or technical debt.
 
-### Pitfall 7: Invalidating Safety Work by Changing Memory Layout
+### 5. Grapheme Cluster Cursor Positioning
 
-**What goes wrong:** Optimization changes data structures (pack structs, reorder fields,
-change allocation patterns) that interact with v1.0 memory safety fixes. Overflow checks no
-longer protect the right fields. Null checks miss new code paths.
+**What goes wrong:**
+Modern emoji like "🧑‍🌾" (farmer) are multi-codepoint grapheme clusters (person + ZWJ + plant = 11 bytes).
+Cursor positioned mid-cluster, text operations split cluster, rendering isolated components (🧑 🌾) instead.
 
-**Why it happens:** Performance optimization often involves memory layout changes (cache
-line alignment, reducing padding). Easy to miss interactions with existing safety checks.
-
-**Consequences:**
-- Safety checks become ineffective
-- New crash paths introduced
-- Buffer overflows in optimized allocations
-- Hard to debug (safety checks exist but don't trigger)
+**Why it happens:**
+- Developer uses codepoint iteration (rune-by-rune), not grapheme iteration
+- Arrow keys increment by 1 codepoint, landing inside ZWJ sequence
+- Combining characters (accents) treated as separate cursor positions
 
 **Prevention:**
-- Inventory all v1.0 safety checks before changing memory layout
-- Update overflow calculations when changing struct sizes
-- Re-validate null checks after allocation path changes
-- Test error paths (OOM, allocation failure) after optimization
+- Use Pango's `pango_break()` or `PangoLogAttr` for grapheme boundaries
+- Cursor motion must skip to next grapheme, not next codepoint
+- Test with emoji: "👨‍👩‍👧‍👦" (family, 25 bytes), "🇺🇸" (flag, 8 bytes)
+- Test with combining characters: "e\u0301" (é as base + accent)
 
 **Detection:**
-- Run memory sanitizer (if available for V)
-- Stress test with allocation failures
-- Verify atlas size calculations match new layout
+- Test: arrow key through "🧑‍🌾", should move 11 bytes, not 4
+- Test: delete "🧑‍🌾", should remove entire cluster, not just 🧑
 
-**Phase guidance:** Phase 5-7 optimization plans must include "safety check review" step.
+**Phase impact:** Cursor motion phase must use grapheme-aware APIs.
+
+**Confidence:** HIGH (verified via [Mitchell Hashimoto blog](https://mitchellh.com/writing/grapheme-clusters-in-terminals),
+[Pango LogAttr docs](https://docs.gtk.org/Pango/struct.LogAttr.html))
 
 ---
 
-### Pitfall 8: Cache Invalidation Breaking Incremental Rendering
+### 6. Selection Across Styled Runs
 
-**What goes wrong:** Optimize atlas/cache eviction strategy but break assumptions about
-glyph availability. Layout assumes glyph is cached but new LRU eviction removed it. Causes
-re-rasterization mid-frame or visual artifacts.
+**What goes wrong:**
+VGlyph has rich text with styled runs (font, size, color). Selection spans multiple runs,
+highlighting drawn per-run with gaps at run boundaries, or style applied to selection affects
+wrong run.
 
-**Why it happens:** CONCERNS.md mentions "Atlas Reset Clears All Cached Glyphs" as
-bottleneck. Implementing multi-page atlas or LRU eviction changes cache guarantees.
-
-**Consequences:**
-- Visual glitches (glyphs disappear/reappear)
-- Performance worse than before (cache thrashing)
-- Frame stutter when eviction triggers
-- Difficult to reproduce (depends on usage patterns)
+**Why it happens:**
+- Selection rectangle calculation per-run, not accounting for inter-run spacing
+- Run boundary detection missing — treats styled text as monolithic
+- Style application on selection doesn't preserve non-selected portions of runs
 
 **Prevention:**
-- Document cache invalidation boundaries (frame-level, layout-level)
-- Pin glyphs needed for current frame
-- Never evict during draw calls
-- Test with worst-case eviction patterns
-- Validate assumptions about glyph lifetime
+- Pango handles multi-run selection via `pango_layout_index_to_pos()` (works across runs)
+- Ensure selection rectangles merged across runs (union of per-run rects)
+- Test: select from middle of bold run into italic run, verify continuous highlight
+- Document run boundary behavior for mutation APIs
 
 **Detection:**
-- Visual artifacts in long-running sessions
-- Performance degrades over time (cache thrashing)
-- Frame time spikes at irregular intervals
+- Visual test: select "**bold**italic" (bold then italic), observe highlight continuity
+- Unit test: selection rect count — should return merged rects, not per-run
 
-**Phase guidance:** Phase 6 (memory optimization) must preserve frame-boundary cache
-guarantees. Eviction only at safe points.
+**Phase impact:** Selection phase must test multi-run scenarios early.
+
+**Confidence:** MEDIUM (general rich text principle, specific to VGlyph's run implementation)
 
 ---
 
-### Pitfall 9: Optimizing Pango/FreeType Calls Without Understanding Internals
+### 7. IME Composition Window Coordinate System
 
-**What goes wrong:** Attempt to optimize FreeType/Pango call patterns (reduce calls, batch
-operations, cache metrics) without understanding library internals. Break mandatory operation
-sequences or internal caching.
+**What goes wrong:**
+NSTextInputClient's `firstRectForCharacterRange` must return screen coordinates (NSRect in screen space),
+but developer returns window-relative or view-relative coords. IME candidate window appears at wrong
+screen location (off-screen or wrong monitor).
 
-**Why it happens:** CONCERNS.md mentions "FreeType Metrics Recomputed Per Run" as
-bottleneck. Temptation to cache metrics at VGlyph level without knowing if FreeType already
-caches.
-
-**Consequences:**
-- Break v1.1 FT state sequence (load→translate→render)
-- Bypass FreeType's internal caches (worse performance)
-- Incorrect metrics due to misunderstood Pango unit conversions
-- Visual corruption from cached stale data
+**Why it happens:**
+- Coordinate system confusion (view → window → screen transformations)
+- VGlyph operates in view-local coords, IME needs screen-global
+- Multi-monitor setups amplify coordinate bugs (wrong display)
 
 **Prevention:**
-- Read FreeType/Pango documentation before optimizing calls
-- Validate library doesn't already optimize what you're caching
-- Respect v1.1 FT state sequence documentation
-- Incremental optimization: measure before/after each change
+- Use `convertToScreen:` APIs to transform view coords to screen space
+- Test on multi-monitor setup (primary + secondary display)
+- Test with IME active, verify candidate window follows cursor
+- Handle HiDPI scaling (Retina display coordinate doubling)
 
 **Detection:**
-- Visual differences after optimization (wrong positions, sizes)
-- Performance worse after "optimization" (fighting library cache)
-- Inconsistent results (cached data out of sync)
+- Visual test: Japanese IME, type on secondary monitor, verify candidate window location
+- Test: cursor at bottom of screen, verify IME window doesn't go off-screen (system clips)
 
-**Phase guidance:** Phase 3 (atlas profiling) and Phase 2 (layout profiling) require
-FreeType/Pango documentation research before optimization proposals.
+**Phase impact:** IME phase must implement coordinate transform correctly.
+
+**Confidence:** MEDIUM (NSTextInputClient requirement, specifics depend on v-gui integration)
 
 ---
 
-### Pitfall 10: TTL/Timeout-Based Eviction in Frame-Driven Rendering
+### 8. Undo/Redo with Rich Text Mutations
 
-**What goes wrong:** Implement time-based cache eviction (TTL, LRU with timestamps) for
-layout cache or glyph atlas. Works poorly for frame-driven rendering where "age" should be
-frame count, not wall-clock time.
+**What goes wrong:**
+Text mutation history (undo stack) stores text content but not styled run boundaries. Undo restores
+old text but loses styling, or redo applies new text with wrong styles.
 
-**Why it happens:** Traditional caching uses time-based eviction. Intuitive to apply same
-pattern to rendering cache. Doesn't match frame-driven access patterns.
-
-**Consequences:**
-- Static text evicted during pause/resize/background
-- Performance hit when returning from pause
-- Inconsistent behavior (depends on frame rate)
-- Memory pressure during low-frame-rate scenarios
+**Why it happens:**
+- Undo implementation captures text string only, not PangoAttrList
+- Styled run offsets (byte indices) invalidated by text insertion/deletion
+- Developer tests undo with plain text (works), ships with broken rich text undo
 
 **Prevention:**
-- Use frame count for "age", not timestamps
-- Layout cache: LRU based on draw count
-- Atlas cache: LRU based on glyph usage per frame
-- Preserve frequently-used glyphs regardless of time
+- Undo state must include: text + attr list + run boundaries
+- Consider serializing PangoAttrList or maintaining parallel style structure
+- Update run offsets on text mutation (insert/delete shifts indices)
+- Test: bold text, undo, redo — verify bold preserved
 
 **Detection:**
-- Performance regression after window minimize/restore
-- Different behavior at 30fps vs 60fps
-- Cache effectiveness varies with frame rate
+- Test: type "**bold**", undo, redo — verify bold styling returns
+- Test: delete inside styled run, undo — verify run boundaries restored
 
-**Phase guidance:** Phase 6 (memory optimization) LRU implementation should use frame-based
-aging.
+**Phase impact:** Mutation phase should design undo strategy before implementing insert/delete.
 
----
-
-### Pitfall 11: Ignoring Subpixel Positioning in Cache Keys
-
-**What goes wrong:** Optimize glyph cache by removing subpixel bin from hash key (thinking
-visual difference is negligible). Breaks smooth text animations and subpixel positioning
-quality.
-
-**Why it happens:** Existing cache key is `hash(font, size, glyph_id, subpixel_bin)`.
-Subpixel bins (4 positions) multiply cache size by 4x. Tempting to remove for memory
-savings.
-
-**Consequences:**
-- Lose subpixel positioning feature (v1.0 requirement)
-- Text animation looks choppy
-- Quality regression users will notice
-- Break existing API guarantees
-
-**Prevention:**
-- Don't remove features for performance
-- If cache size is problem, increase atlas size instead
-- Profile whether subpixel cache is actual bottleneck
-- Visual comparison: with/without subpixel bins
-
-**Detection:**
-- Animation looks jaggy after optimization
-- Text position snaps to pixel boundaries
-- Visual quality clearly worse
-
-**Phase guidance:** Subpixel positioning is VALIDATED REQUIREMENT. Cannot be removed.
+**Confidence:** MEDIUM (general undo principle, specific to Pango attr list management)
 
 ---
 
 ## Minor Pitfalls
 
-Mistakes causing annoyance, misleading metrics, or false conclusions.
+Mistakes causing annoyance but fixable.
 
-### Pitfall 12: Measuring Cold Start Instead of Steady State
+### 9. Cursor Blink Phase on Focus
 
-**What goes wrong:** Profile first frame performance (cold cache) and treat as
-representative. Optimize cold-start paths that only run once. Miss steady-state bottlenecks
-that affect ongoing rendering.
+**What goes wrong:**
+Cursor blink timer starts at random phase on focus, sometimes cursor invisible initially (bad UX).
 
-**Why it happens:** Easy to profile startup. First impressions matter. But most rendering
-time is steady-state (cached layouts, warm atlas).
-
-**Consequences:**
-- Optimize infrequent paths
-- Ignore hot paths that dominate frame time
-- Misleading before/after comparisons
+**Why it happens:**
+- Blink timer started without forcing visible state first
+- Focus event doesn't reset blink phase to "visible"
 
 **Prevention:**
-- Profile frame 100-1000, not frame 1-10
-- Measure steady-state after cache warm-up
-- Separate cold-start metrics from steady-state metrics
-- Optimize steady-state first, cold-start second
+- On focus: show cursor immediately, then start blink timer
+- On focus lost: hide cursor (no blinking when unfocused)
 
 **Detection:**
-- Frame 1 much slower than frame 100 (expected)
-- Optimization helps frame 1 but not frame 100 (wrong target)
+- Manual test: click into text field 20 times, cursor should always appear immediately
 
-**Phase guidance:** All profiling phases measure steady-state (after cache warm-up).
+**Phase impact:** v-gui integration phase.
+
+**Confidence:** HIGH (common text editor UX pattern)
 
 ---
 
-### Pitfall 13: Forgetting Layout Cache Exists
+### 10. Selection Rendering Z-Order
 
-**What goes wrong:** Optimize layout computation (Pango shaping, metrics) but VGlyph
-already has 10,000-entry layout cache. Optimization doesn't improve frame time because
-layouts are cached.
+**What goes wrong:**
+Selection highlight drawn after text, obscures glyphs (especially with opaque highlight color).
 
-**Why it happens:** Forget that TextSystem caches layouts. See Pango calls in profiler and
-assume they're bottleneck.
-
-**Consequences:**
-- Wasted optimization effort
-- Miss actual bottlenecks (cache lookup overhead, hash collisions)
+**Why it happens:**
+- Rendering order: text first, selection second (wrong)
+- Alpha blending wrong direction (highlight over text instead of under)
 
 **Prevention:**
-- Check cache hit rate before optimizing
-- Understand what's cached: layouts (yes), glyphs (yes), metrics (no)
-- Profile cache misses separately from cache hits
+- Render order: selection highlight, then text glyphs
+- Use semi-transparent selection color for highlight visibility
 
 **Detection:**
-- Optimization improves cold start but not steady-state
-- Cache hit rate is >95% = layout computation not bottleneck
+- Visual test: select text, verify glyphs visible over highlight
 
-**Phase guidance:** Phase 2 (layout profiling) must measure cache hit rates first.
+**Phase impact:** Selection rendering phase.
 
----
-
-### Pitfall 14: Comparing Different Workloads
-
-**What goes wrong:** Measure baseline with simple text ("Hello World"), measure after
-optimization with complex text (emoji, RTL, vertical). Conclude huge performance difference
-due to workload change, not optimization.
-
-**Why it happens:** Want to show optimization works on "realistic" text. Change test case
-between measurements.
-
-**Consequences:**
-- Invalid before/after comparison
-- False performance claims
-- Can't isolate optimization impact
-
-**Prevention:**
-- Lock test workload before starting optimization
-- Same text, same fonts, same window size for all measurements
-- Document test case in profiling plan
-- Use examples/ directory for reproducible workloads
-
-**Detection:**
-- Baseline and optimized runs use different test cases
-- Can't reproduce performance improvement
-
-**Phase guidance:** Phase 2-4 must define test workloads before profiling starts. No
-changes during optimization.
-
----
-
-### Pitfall 15: Not Accounting for GPU Driver Variance
-
-**What goes wrong:** Optimize GPU rendering path and see 30% improvement on NVIDIA
-development machine. Users on AMD/Intel see no improvement or regression.
-
-**Why it happens:** GPU driver behavior varies by vendor. Optimization for one driver may
-hurt others. Buffer update patterns, texture formats, batch sizes have different
-characteristics.
-
-**Consequences:**
-- Optimization works on dev machine but not user machines
-- Platform-specific performance regressions
-- Bug reports from users with different GPUs
-
-**Prevention:**
-- Test on multiple GPU vendors (NVIDIA, AMD, Intel)
-- Use standard OpenGL patterns (avoid driver-specific hacks)
-- Document GPU test matrix (vendor, driver version)
-- Conservative optimization (avoid micro-optimizations)
-
-**Detection:**
-- Performance improvement only on specific GPU
-- User reports worse performance after "optimization"
-
-**Phase guidance:** Phase 4 (render path) optimization validation requires multi-GPU
-testing.
+**Confidence:** HIGH (standard text rendering practice)
 
 ---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Instrumentation | Profiling overhead in release builds | Validate zero overhead before proceeding |
-| Layout profiling | Optimizing already-cached operations | Measure cache hit rate first |
-| Atlas profiling | GPU-CPU sync stalls from glFinish | Use GPU query objects |
-| Render profiling | Microbenchmarks vs real workloads | Profile full frame with realistic text |
-| Latency optimization | Breaking v1.0/v1.1 safety checks | Safety check review mandatory |
-| Memory optimization | Cache invalidation breaking rendering | Frame-boundary eviction only |
-| Bottleneck addressing | Premature optimization without data | Require profiling data for every change |
+| Phase | Likely Pitfall | Mitigation |
+|-------|---------------|------------|
+| Foundation | Byte index confusion (1) | Use Pango cursor motion APIs, test with emoji early |
+| Cursor geometry | Bidirectional ambiguity (4) | Decide strong/weak strategy, use `get_cursor_pos()` correctly |
+| Cursor motion | Grapheme clusters (5) | Use PangoLogAttr for boundaries, test with ZWJ emoji |
+| Selection | Multi-run highlighting (6) | Test across styled runs, verify rect merging |
+| Mutation | Cache invalidation (2) | Design invalidation strategy first, test immediately |
+| Mutation | Undo/redo with styles (8) | Capture attr list in undo state, test with rich text |
+| IME | Range confusion (3) | Read protocol docs carefully, test with Japanese IME |
+| IME | Coordinate system (7) | Test on multi-monitor, verify screen space coords |
+| v-gui integration | Cursor blink phase (9) | Reset timer on focus, show cursor immediately |
+| Rendering | Selection z-order (10) | Render highlight before text |
 
----
+## Testing Strategy
 
-## Integration with Existing Safety Work
+**Minimal test corpus for pitfall detection:**
+```
+ASCII:        "hello world"
+Emoji:        "hello 🧑‍🌾 world"  (ZWJ sequence)
+Flag:         "🇺🇸"               (regional indicators)
+Combining:    "é"                 (e + combining acute)
+Bidi:         "hello שלום"        (LTR + RTL)
+CJK:          "你好 world"        (multi-byte, IME test)
+Multi-run:    "**bold**italic"   (styled text)
+```
 
-VGlyph v1.0 hardened memory operations, v1.1 hardened fragile areas. Performance work must
-not regress this.
+**Critical manual tests:**
+- Japanese IME: type "kanji", convert, verify composition window
+- Multi-monitor: cursor on secondary display, verify IME follows
+- Rapid typing: insert 100 chars fast, verify cache invalidates, no lag
+- Undo/redo: style text, undo, redo — verify styles preserved
 
-**v1.0 Safety Checks to Preserve:**
-- Error-returning API (`!GlyphAtlas`)
-- Dimension overflow validation before allocation
-- 1GB max allocation limit
-- grow() error propagation
-- Null checks after vcalloc
+## Open Questions
 
-**v1.1 Debug Guards (Can Optimize):**
-- Iterator exhaustion tracking (debug-only)
-- AttrList leak counter (debug-only)
-- FreeType state validation (debug-only)
-
-These are already zero-overhead in release. No optimization needed or allowed.
-
-**v1.1 Mandatory Sequences (UNTOUCHABLE):**
-- FreeType load→translate→render sequence
-- AttrList copy→unref pairing
-- Iterator defer-based cleanup
-
-These prevent crashes/UB. Cannot be "optimized away" under any circumstances.
-
----
-
-## Confidence Assessment
-
-| Category | Confidence | Source |
-|----------|------------|--------|
-| GPU profiling pitfalls | HIGH | OpenGL documentation, Khronos forums, NVIDIA developer docs |
-| Debug vs release profiling | HIGH | Flutter 2026 article, general profiling best practices |
-| Text rendering cache issues | MEDIUM | VGlyph CONCERNS.md, general rendering experience |
-| FreeType optimization pitfalls | MEDIUM | FreeType FAQ, forum discussions (not all 2026) |
-| Pango optimization pitfalls | LOW | Limited recent documentation, extrapolating from general patterns |
-
-**Low confidence areas needing deeper research:**
-- Pango internal caching behavior (metrics, layout results)
-- FreeType 2.13+ performance characteristics
-- V language-specific profiling tools and patterns
-
----
+- Defer bidirectional text to post-v1.3? (simplify by forcing LTR)
+- Undo granularity: per-character or per-word? (affects undo stack size)
+- IME scope: macOS only for v1.3, or Linux/Windows too? (IBus/TSF complexity)
 
 ## Sources
 
-### Text Rendering Performance
-- [text-rendering: optimizeLegibility is Decadent and Depraved](https://www.bocoup.com/blog/text-rendering)
-- [LearnOpenGL - Text Rendering](https://learnopengl.com/In-Practice/Text-Rendering)
-- [UI Performance: Improving Text Rendering](https://medium.com/lalafo-engineering/ui-performance-improving-text-rendering-4715ca1dd2bd)
+**HIGH confidence (official docs, authoritative sources):**
+- [Pango Layout class](https://docs.gtk.org/Pango/class.Layout.html) — byte index APIs
+- [Pango LogAttr](https://docs.gtk.org/Pango/struct.LogAttr.html) — grapheme boundaries
+- [NSTextInputClient](https://developer.apple.com/documentation/appkit/nstextinputclient) — IME protocol
+- [Microsoft: Glaring Hole in NSTextInputClient](https://learn.microsoft.com/en-us/archive/blogs/rick_schaut/the-glaring-hole-in-the-nstextinputclient-protocol) — protocol quirks
+- [Marijn Haverbeke: Cursor in Bidi Text](https://marijnhaverbeke.nl/blog/cursor-in-bidi-text.html) — bidirectional challenges
+- [Mitchell Hashimoto: Grapheme Clusters in Terminals](https://mitchellh.com/writing/grapheme-clusters-in-terminals) — emoji handling
 
-### OpenGL Performance Anti-Patterns
-- [OpenGL text rendering performance optimization](https://github.com/Samson-Mano/opengl_textrendering)
-- [OpenGL text rendering performance questions](https://community.khronos.org/t/what-are-my-options-to-improve-text-rendering-performance/70927)
-- [Fast text rendering in OpenGL](https://www.sjbaker.org/steve/omniv/opengl_text.html)
+**MEDIUM confidence (community/implementation discussions):**
+- [GNOME Discourse: Pango Indexes](https://discourse.gnome.org/t/pango-indexes-to-string-positions-correctly/15814)
+- [Mozilla Bug 335810](https://bugzilla.mozilla.org/show_bug.cgi?id=335810) — Pango cursor bugs
+- [Mozilla Bug 875674](https://bugzilla.mozilla.org/show_bug.cgi?id=875674) — NSTextInputClient implementation
+- [xi-editor IME Issue](https://github.com/xi-editor/xi-mac/issues/18) — IME complexity discussion
+- [TinyMCE: Undo Function Handling](https://www.tiny.cloud/blog/undo-function-handling/) — undo/redo patterns
 
-### Profiling Pitfalls
-- [Flutter App Performance: Profiling in 2026](https://startup-house.com/blog/flutter-app-performance)
-- [How Impeller Is Transforming Flutter UI Rendering in 2026](https://dev.to/eira-wexford/how-impeller-is-transforming-flutter-ui-rendering-in-2026-3dpd)
-
-### GPU Pipeline Stalls
-- [Graphics Pipeline Performance](https://developer.nvidia.com/gpugems/gpugems/part-v-performance-and-practicalities/chapter-28-graphics-pipeline-performance)
-- [OpenGL Synchronization Wiki](https://www.khronos.org/opengl/wiki/Synchronization)
-- [Vulkan Pipeline Barriers](https://docs.vulkan.org/samples/latest/samples/performance/pipeline_barriers/README.html)
-
-### Continuous Profiling Overhead
-- [Continuous Profiling in Go with pprof and Pyroscope](https://oneuptime.com/blog/post/2026-01-07-go-continuous-profiling/view)
-- [Profiling in Production with eBPF](https://medium.com/@yashbatra11111/profiling-in-production-without-killing-performance-ebpf-continuous-profiling-5a92a8610769)
-- [Profiling Performance Overhead](https://docs.sentry.io/product/explore/profiling/performance-overhead/)
-
-### Microbenchmark Pitfalls
-- [Beware microbenchmarks bearing gifts](https://abseil.io/fast/39)
-- [The Early Microbenchmark Catches the Bug](https://dl.acm.org/doi/10.1145/3603166.3632128)
-
-### Cache Invalidation
-- [The Cache Invalidation Nightmare](https://triotech.com/the-cache-invalidation-nightmare-what-youre-likely-doing-wrong/)
-- [Cache Invalidation: The Silent Performance Killer](https://dev.to/ferdinandodhiambo/cache-invalidation-the-silent-performance-killer-1fl8)
-- [Top 10 Common Caching Mistakes](https://moldstud.com/articles/p-top-10-common-caching-mistakes-to-avoid-for-enhanced-performance)
-
-### FreeType/Pango Performance
-- [FreeType FAQ](https://freetype.org/freetype2/docs/ft2faq.html)
-- [FreeType Performance Issue Discussion](https://forum.segger.com/index.php/Thread/9214-Performance-issue-with-FreeType-2-12-1/)
-- [Pango Dependencies and Performance](https://gitlab.gnome.org/GNOME/pango/-/issues/368)
-
-### Font Glyph Caching
-- [Font Stash: Dynamic Font Glyph Cache](https://github.com/akrinke/Font-Stash)
-- [Warp: Kerning and Glyph Atlases](https://www.warp.dev/blog/adventures-text-rendering-kerning-glyph-atlases)
-- [Font flickering due to glyph cache](https://github.com/defold/defold/issues/9720)
+**LOW confidence (unverified WebSearch findings):**
+- Cache invalidation patterns — general principle, not Pango-specific
+- Multi-monitor coordinate systems — NSTextInputClient requirement, specifics TBD with v-gui integration

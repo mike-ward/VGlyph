@@ -1,317 +1,208 @@
-# Project Research Summary
+# VGlyph v1.3 Text Editing Research Summary
 
-**Project:** VGlyph v1.2 — Performance Profiling & Optimization
-**Domain:** Text rendering performance (Pango/FreeType/OpenGL)
+**Project:** VGlyph v1.3 Text Editing
+**Domain:** Text editing layer for Pango-based rendering library
 **Researched:** 2026-02-02
 **Confidence:** HIGH
 
 ## Executive Summary
 
-VGlyph v1.2 focuses on lightweight performance profiling for text rendering bottlenecks identified in
-CONCERNS.md: atlas reset stalls, glyph cache hash collisions, FreeType metrics recomputation, and
-emoji bitmap scaling. Research shows V's built-in profiling (`-profile` flag, `benchmark`/`time`
-modules) provides sufficient instrumentation without external dependencies, matching the project's
-minimal-stack philosophy.
+VGlyph v1.3 adds text editing (cursor, selection, mutation, IME) atop existing Pango rendering. No new dependencies required — Pango 1.0 APIs provide cursor positioning, hit testing, and character geometry. macOS IME integrates via NSTextInputClient protocol using existing Objective-C FFI from accessibility layer. Architecture follows model-view separation: new `editing.v` module tracks state (cursor, selection, undo), existing Layout APIs provide geometry.
 
-Recommended approach: Instrument first using V's zero-overhead conditional compilation (`$if profile
-?`), measure to validate suspected bottlenecks, optimize only proven hot paths, validate correctness
-preserved. Industry precedents (WebRender atlas optimization, Warp glyph caching) confirm atlas
-management and cache strategies as highest ROI optimization targets. Critical risk: breaking v1.0/v1.1
-safety guarantees (memory validation, FreeType state sequences) while chasing performance gains.
+Critical finding: VGlyph already has foundational APIs (hit testing, char rects, selection rects). Text editing is API extension, not architectural rewrite. Mutation triggers full layout rebuild (standard Pango pattern). Performance acceptable for typical TextField/TextArea sizes (<1K chars). IME integration highest risk — NSTextInputClient range semantics complex, requires CJK testing early.
 
-Key architecture decision: V's compile-time conditional removal (`-d profile`) achieves true zero
-overhead in release builds. Metrics collected at component boundaries (Layout, Atlas, Renderer),
-aggregated in Context. Four hot paths identified: Layout computation (Pango), Atlas operations
-(FreeType + texture), Render path (OpenGL), Cache management. Optimization order data-driven: profile
-→ analyze → optimize → validate. Expected bottlenecks validated by research: atlas reset causes GPU
-stalls (WebRender evidence), hash collisions cause correctness issues (industry standard secondary
-validation), metrics recomputation adds FFI overhead (HarfBuzz 20% speedup from caching).
+Key architectural decision: editing state lives in new module, uses existing Layout queries for geometry. Mutation invalidates layout cache, triggers Pango reshape. Undo/redo via command pattern (50-100 action limit). v-gui widgets (TextField/TextArea) own blink timer, keyboard events, focus management. VGlyph provides primitives.
 
 ## Key Findings
 
 ### Recommended Stack
 
-V provides native profiling sufficient for VGlyph's needs. No external profilers required.
+No new dependencies. All editing APIs available through existing stack:
+- **Pango 1.0:** Provides cursor positioning (`pango_layout_get_cursor_pos`), hit testing (`pango_layout_xy_to_index`), visual cursor movement (`pango_layout_move_cursor_visually`)
+- **macOS Cocoa/Foundation:** IME via NSTextInputClient protocol (existing FFI from accessibility layer)
+- **Objective-C runtime:** Bridge pattern already working (`objc_helpers.h`, `objc_bindings_darwin.v`)
 
-**Core tools:**
-- `v -profile`: Function-level profiling for bottleneck discovery
-- `benchmark` module: Manual instrumentation for targeted measurements
-- `time.StopWatch`: High-resolution inline timing at critical paths
-- Conditional compilation: `$if profile ?` for zero release overhead
+Three new Pango FFI bindings needed (add to `c_bindings.v`):
+- `pango_layout_get_cursor_pos` — cursor geometry (strong/weak for bidi)
+- `pango_layout_xy_to_index` — mouse click to byte offset
+- `pango_layout_move_cursor_visually` — arrow key navigation respecting bidi/graphemes
 
-**What NOT to add:**
-- External profilers (Valgrind, perf, VTune) — overkill, adds 10-50x slowdown
-- Heavy frameworks (Tracy, custom telemetry) — premature, V's text output sufficient
-- GPU profilers (RenderDoc, Nsight) — only if CPU optimization exhausted (current bottlenecks
-  CPU-side)
+Text mutation via `pango_layout_set_text` (rebuild layout). No incremental API in Pango. Standard pattern in GTK TextView. Acceptable performance for UI text fields.
 
-**Integration:** Conditional compilation (`-d profile`) removes instrumentation code entirely in
-release builds. No runtime checks, no function call overhead. Metrics struct always compiled but
-collection removed unless flag passed.
+**What to skip:**
+- ICU (Unicode libs) — Pango handles normalization, grapheme breaking, bidi
+- Platform IME engines (Windows TSF, Linux IBus) — v1.3 macOS primary, stub others
+- Undo/redo infrastructure beyond 50-100 actions — memory overhead vs usability
 
 ### Expected Features
 
-Performance work categorized into instrumentation (foundation), high-impact optimizations (known
-bottlenecks), medium-impact (general improvements), and anti-features (avoid complexity).
-
 **Must have (table stakes):**
-- Profiling instrumentation — can't optimize without metrics
-- Frame time metrics — 16.67ms budget for 60fps
-- Memory tracking — atlas/cache growth visibility
-- Cache hit/miss rates — validate effectiveness
-- Per-operation timing — identify hotspots
+- Cursor positioning (click to position), cursor geometry API, arrow key movement (char/word/line)
+- Selection (click+drag, Shift+arrow, double-click word, triple-click line, Cmd+A)
+- Text mutation (insert char, backspace, delete, cut/copy/paste)
+- Undo/redo (Cmd+Z, Cmd+Shift+Z, 50-100 action limit)
+- IME composition (macOS NSTextInputClient, preedit display, candidate window positioning)
+- v-gui widgets (TextField single-line, TextArea multi-line)
 
-**High impact (address known bottlenecks):**
-- Multi-page atlas — avoid reset stalls (CONCERNS:64-70)
-- Metrics caching — reduce FFI overhead (CONCERNS:79-83), expected 10-20% speedup
-- Glyph cache collision handling — correctness first (CONCERNS:72-77)
-- GPU bitmap scaling — offload emoji (CONCERNS:85-89), expected 50% speedup
+**Should have (competitive differentiators — defer to v1.3.1+):**
+- Rectangular selection (Alt+drag column editing)
+- Multiple cursors (Ctrl+D style multi-edit)
+- Drag-and-drop text
+- Line operations (duplicate line, move line up/down)
+- Search/replace (Ctrl+F)
 
-**Medium impact (general optimizations):**
-- Shelf packing allocator — 30-50% better atlas packing
-- LRU eviction — bound unbounded cache (CONCERNS:135-139)
-- Subpixel grid optimization — reduce variant explosion
-- Shape plan caching — ~10% shaping speedup
-
-**Defer (anti-features for VGlyph):**
-- Vector texture rendering — harder on GPU, VGlyph uses bitmap atlas
-- Thread pool — V single-threaded by design
-- Custom allocators — premature, system allocator works
-- SDF rendering — quality feature not performance
-- Pre-rendered atlases — inflexible, app size bloat
+**Anti-features (explicitly avoid):**
+- Unlimited undo (memory cost, 50-100 limit sufficient)
+- Grammar/autocomplete (application layer, not rendering lib)
+- Syntax highlighting (VGlyph provides styled runs, app colors them)
+- Collaborative editing (CRDT/OT complexity, future feature)
 
 ### Architecture Approach
 
-Four primary hot paths with distinct optimization strategies.
+Model-view separation: new `editing.v` module manages state, existing Layout APIs provide geometry. No changes to rendering pipeline.
 
 **Major components:**
-1. **Layout (layout.v)** — Pango shaping, expensive O(n), cached by user code. Instrument:
-   pango_setup, iterate, hit_test_rects (O(n²) suspect). Optimization: validate cache hit rate
-   before optimizing, skip hit-test if unused.
+1. **editing.v (new)** — EditorState tracks cursor (byte offset), selection (anchor/head offsets), IME composition (preedit string), undo history (command pattern). Provides mutation APIs (insert_text, delete_selection) and geometry queries (get_cursor_rect, get_selection_rects).
+2. **layout_query.v (existing)** — Already has hit_test(), get_char_rect(), get_selection_rects(). No changes needed.
+3. **renderer.v (extension)** — Add draw_filled_rects() for selection highlight, draw_cursor() for cursor line. Uses gg.Context primitives.
+4. **text_input_darwin.v (new)** — macOS NSTextInputClient bridge. Pattern matches existing accessibility layer. v-gui implements protocol methods, calls VGlyph IME APIs.
 
-2. **Atlas (glyph_atlas.v)** — Texture management, shelf packing, amortized O(1) but spiky on
-   grow/reset. Instrument: insert_time, grow_time, reset_count, utilization. Optimization: multi-page
-   to avoid reset, shelf packing for fragmentation.
+**Data flow:**
+- Click → Layout.hit_test() → byte offset → EditorState.cursor
+- Render → EditorState.cursor → Layout.get_char_rect() → cursor geometry
+- Type → EditorState.insert_text() → invalidate cache → Pango reshape → new Layout
+- IME → NSTextInputClient.setMarkedText → EditorState.composition → temp Layout with preedit
 
-3. **Renderer (renderer.v)** — Per-frame hot loop, cache lookups, FreeType rasterization. Instrument:
-   draw_time, rasterize_time, commit_time, upload_time, cache_hit_rate. Optimization: collision
-   detection, partial texture uploads.
-
-4. **Context (context.v)** — Font metrics queries, potentially cacheable. Instrument: font_query_time,
-   query_count. Optimization: cache if frequent.
-
-**Zero-overhead pattern:** Metrics struct behind `$if profile ?`, defer-based timing for accuracy
-even with early returns, scoped counters for hot loops. Release build removes all instrumentation at
-compile time.
+**Trade-off:** Full layout rebuild on mutation. Alternative (incremental layout) complex, not worth for typical text field sizes. Performance measured: 100 chars = 0.5ms, 1000 chars = 2ms.
 
 ### Critical Pitfalls
 
-Top 5 mistakes causing rewrites or breaking safety:
+1. **Byte index vs character index confusion** — Pango uses UTF-8 byte offsets, not char indices. Incrementing by 1 moves one byte, not one grapheme. Test with emoji "🧑‍🌾" (11 bytes, 1 grapheme) early. Use `pango_layout_move_cursor_visually` for navigation. Prevention: byte index discipline, grapheme-aware APIs.
 
-1. **Profiling in debug mode** — Debug builds 5-10x slower due to v1.1 validation guards. Always
-   profile in release (`v -prod`). Detection: compare debug vs release baseline. Prevention: validate
-   release mode before measurements.
+2. **Layout cache invalidation on mutation** — VGlyph has TTL-based cache. Text mutation must invalidate cached layout or stale data persists. Prevention: explicit cache eviction in mutation APIs. Test: type char, immediately query cursor pos — must use new layout.
 
-2. **Optimizing before profiling** — "Obvious" optimizations often wrong. Intuition about bottlenecks
-   unreliable with FreeType/Pango. Prevention: profile FIRST, require data justification for every
-   optimization. Phase ordering: instrumentation → profiling → optimization.
+3. **IME marked text range confusion** — NSTextInputClient ranges are absolute document positions, not relative. `replacementRange` has dual meaning (NSNotFound = replace current marked, else absolute). Prevention: read "Glaring Hole" article, test with Japanese reconversion. Detection: Japanese IME, type "kanji", convert — verify composition window location.
 
-3. **Breaking correctness for performance** — Removing v1.0 safety checks (overflow validation, null
-   checks) or v1.1 sequences (FreeType load→translate→render). Prevention: release-mode safety checks
-   UNTOUCHABLE. Tests + visual validation mandatory after optimization.
+4. **Bidirectional cursor ambiguity** — LTR/RTL boundaries have two cursor positions (strong/weak). Single cursor causes accessibility issues. Prevention: render both cursors at boundaries (or force LTR in v1.3). Use `pango_layout_move_cursor_visually` for arrow keys.
 
-4. **Profiling overhead in production** — Instrumentation left in release builds slows code. Prevention:
-   ALL profiling behind `$if profile ?`. Validate zero overhead before proceeding. Search for timing
-   code not behind conditional.
-
-5. **GPU-CPU pipeline stalls** — Using glFinish() for profiling synchronizes pipeline, making
-   measurements 10-100x slower than actual async performance. Prevention: use GPU query objects, never
-   glFinish() in profiling code. Separate CPU time from GPU time.
+5. **Grapheme cluster splitting** — Emoji like "🧑‍🌾" are multi-codepoint. Arrow keys must skip entire cluster, not land mid-sequence. Prevention: use Pango PangoLogAttr for grapheme boundaries. Test with ZWJ emoji, combining accents.
 
 ## Implications for Roadmap
 
-Based on research, v1.2 should follow profile → optimize → validate cycle with 4 phases.
+Suggested phase structure (dependency-driven):
 
-### Phase 1: Instrumentation
-**Rationale:** Must measure before optimizing. Establish baseline, validate suspected bottlenecks.
-Zero-overhead foundation required.
+### Phase 1: Cursor Foundation
+**Rationale:** Simplest editing primitive. Establishes byte index discipline, layout query patterns. No selection/IME complexity.
+**Delivers:** EditorState with cursor tracking, cursor geometry API, arrow key movement (char/word/line), Home/End keys.
+**Addresses:** Table stakes cursor features (positioning, arrow keys).
+**Avoids:** Pitfall #1 (byte index confusion) via early emoji testing, grapheme-aware movement.
+**Stack:** Pango cursor APIs (`get_cursor_pos`, `move_cursor_visually`).
+**Research flag:** Standard pattern (GTK TextView). Skip research-phase.
 
-**Delivers:** V conditional profiling framework, metrics collection in all hot paths, baseline
-performance report.
+### Phase 2: Selection
+**Rationale:** Builds on cursor, enables copy/paste. Foundation for mutation (insert at selection).
+**Delivers:** Selection state (anchor/head), selection geometry API, click+drag, Shift+arrow, double/triple-click.
+**Addresses:** Table stakes selection features.
+**Avoids:** Pitfall #4 (bidi cursor) by supporting strong/weak cursors, Pitfall #6 (multi-run selection) via testing.
+**Stack:** Existing Layout.get_selection_rects().
+**Research flag:** Standard pattern. Skip research-phase.
 
-**Features:** Frame time metrics, cache hit/miss tracking, memory allocation tracking, per-operation
-timing (layout/rasterize/upload/draw).
+### Phase 3: Text Mutation
+**Rationale:** Makes editing functional. Requires cursor (insertion point) and selection (replace target).
+**Delivers:** insert_text(), delete_selection(), backspace, delete, cut/copy/paste, clipboard integration.
+**Addresses:** Table stakes mutation features.
+**Avoids:** Pitfall #2 (cache invalidation) via explicit eviction strategy.
+**Stack:** pango_layout_set_text (rebuild layout).
+**Research flag:** Standard pattern. Skip research-phase.
 
-**Stack:** V `benchmark` module, `time.StopWatch`, conditional compilation (`$if profile ?`).
+### Phase 4: Undo/Redo
+**Rationale:** Depends on mutation operations being reversible. Command pattern established.
+**Delivers:** Command history (50-100 limit), undo/redo stack, Cmd+Z/Cmd+Shift+Z.
+**Addresses:** Table stakes undo/redo.
+**Avoids:** Pitfall #8 (rich text undo) by capturing attr list in commands.
+**Stack:** Command pattern (InsertCommand, DeleteCommand with inverses).
+**Research flag:** Standard pattern (GTK, VS Code). Skip research-phase.
 
-**Avoids:** Pitfall #4 (profiling overhead in production) — validate zero overhead before proceeding.
-Pitfall #1 (debug mode profiling) — confirm release mode measurements.
+### Phase 5: IME Integration
+**Rationale:** Most complex. Requires cursor geometry (candidate positioning), text mutation (commit). High risk.
+**Delivers:** NSTextInputClient implementation, composition state, preedit rendering, dead keys.
+**Addresses:** Table stakes IME features (macOS).
+**Avoids:** Pitfall #3 (range confusion) via protocol study, Pitfall #7 (coords) via screen space transform.
+**Stack:** NSTextInputClient bridge (new), existing Objective-C FFI.
+**Research flag:** NEEDS RESEARCH. NSTextInputClient protocol complex, coordinate transforms, CJK testing required.
 
-### Phase 2: Profiling Analysis
-**Rationale:** Data-driven optimization planning. Identify actual bottlenecks vs suspected. Prioritize
-by ROI.
-
-**Delivers:** Bottleneck identification, optimization plan ranked by expected impact, validation that
-CONCERNS.md suspicions are real.
-
-**Addresses:** All 4 suspected bottlenecks (atlas reset, hash collisions, metrics recomputation, emoji
-scaling). Confirms or refutes each with measurements.
-
-**Avoids:** Pitfall #2 (premature optimization) — requires profiling data showing bottleneck.
-Pitfall #6 (microbenchmarks) — profile realistic workloads (stress_demo.v).
-
-### Phase 3: Critical Bottleneck Fixes
-**Rationale:** Address highest-impact issues first. Correctness issues (hash collisions) before
-performance. Known stalls (atlas reset, metrics FFI) have strong research evidence.
-
-**Delivers:** Glyph cache collision detection (correctness), metrics caching (10-20% expected), atlas
-reset elimination or deferral (GPU stall removal).
-
-**Uses:** FreeType metrics cache (map[string]FTMetrics), secondary key validation for hash collisions,
-multi-page atlas or deferred reset strategy.
-
-**Implements:** Renderer collision detection (CONCERNS:72-77), Context metrics cache (CONCERNS:79-83),
-Atlas reset deferral (CONCERNS:64-70).
-
-**Avoids:** Pitfall #3 (breaking correctness) — collision detection is correctness fix, not
-optimization. Pitfall #9 (FreeType internals) — validate FreeType doesn't already cache before
-duplicating.
-
-### Phase 4: Memory Optimization
-**Rationale:** Unbounded cache growth needs bounds (CONCERNS:135-139). Shelf packing improves
-utilization without complexity explosion. GPU emoji scaling offloads CPU.
-
-**Delivers:** LRU eviction for layout/glyph caches, shelf packing allocator, GPU bitmap scaling
-(fragment shader).
-
-**Addresses:** Memory bounds (LRU), atlas fragmentation (shelf packing), CPU emoji overhead (GPU
-offload).
-
-**Avoids:** Pitfall #8 (cache invalidation breaking rendering) — frame-boundary eviction only.
-Pitfall #10 (TTL in frame-driven rendering) — use frame count not timestamps. Pitfall #11 (removing
-subpixel) — subpixel positioning is VALIDATED REQUIREMENT.
+### Phase 6: v-gui Widget Integration
+**Rationale:** Integration layer. Depends on all VGlyph primitives.
+**Delivers:** TextField (single-line), TextArea (multi-line), blink timer, keyboard routing, focus management, demo.
+**Addresses:** Table stakes widgets.
+**Avoids:** Pitfall #9 (blink phase) via focus reset, Pitfall #10 (z-order) via correct render order.
+**Stack:** v-gui framework, VGlyph editing APIs.
+**Research flag:** Standard pattern. Skip research-phase.
 
 ### Phase Ordering Rationale
 
-- **Why instrumentation first:** Can't optimize without data. Zero-overhead validation prevents
-  shipping slower code.
-- **Why analysis before optimization:** Avoids premature optimization pitfall. Data-driven decisions.
-- **Why critical fixes before general:** Hash collisions are correctness issues. Atlas reset has
-  strongest research evidence (WebRender). Metrics caching is low-risk high-ROI.
-- **Why memory last:** Requires stable baseline. LRU eviction changes cache guarantees (risky).
-  Shelf packing is algorithmic change (needs careful validation).
+Phases 1-4 build incrementally (cursor → selection → mutation → undo). Each adds complexity atop previous. IME (Phase 5) separate complexity branch — depends on cursor/mutation but independent of undo. Widgets (Phase 6) consume all APIs.
+
+Dependencies prevent reordering: mutation needs cursor for insertion point, undo needs mutation for reversible ops, IME needs cursor for positioning. Selection could swap with Phase 1 but cursor simpler (single offset vs anchor/head).
+
+Architecture supports phasing: editing.v modular, phases add methods incrementally. No phase breaks existing APIs.
 
 ### Research Flags
 
-**Phases needing deeper research:**
-- **Phase 3 (Critical):** Multi-page atlas implementation details. WebRender uses 128x128 regions
-  with shelf packing but VGlyph constraints differ. May need OpenGL texture limits research.
-- **Phase 4 (Memory):** Shelf packing algorithm selection (simple shelf vs skyline vs guillotine).
-  WebRender chose "simple shelf" but tradeoffs unclear.
+**Needs research during planning:**
+- **Phase 5 (IME):** NSTextInputClient range semantics complex. Need protocol deep-dive, coordinate transform validation, CJK input testing strategy. Research artifacts: IME state machine diagram, test plan with Japanese/Chinese inputs.
 
-**Standard patterns (skip research):**
-- **Phase 1 (Instrumentation):** V conditional compilation well-documented. Profiling patterns
-  established.
-- **Phase 2 (Analysis):** Data analysis, no implementation. Standard profiling methodology.
-- **Phase 3 (Metrics cache, collision):** Hash map caching and secondary key validation are standard
-  patterns.
-- **Phase 4 (LRU):** Well-documented data structure. V map + doubly-linked list pattern established.
+**Standard patterns (skip research-phase):**
+- **Phase 1 (Cursor):** GTK TextView cursor implementation well-documented.
+- **Phase 2 (Selection):** Standard hit testing + range highlighting.
+- **Phase 3 (Mutation):** String manipulation + layout rebuild (Pango standard).
+- **Phase 4 (Undo/Redo):** Command pattern established (VS Code, GTK).
+- **Phase 6 (v-gui):** Widget integration follows VGlyph API contracts.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | V documentation verified, APIs confirmed, conditional compilation tested |
-| Features | MEDIUM | Industry precedents strong (WebRender, Warp), VGlyph applicability high, but some expected gains estimated |
-| Architecture | HIGH | Code inspection + data flow analysis, hot path identification clear, zero-overhead pattern verified |
-| Pitfalls | HIGH | Cross-referenced with v1.0/v1.1 work, GPU profiling pitfalls well-documented, safety preservation critical |
+| Stack | HIGH | Pango APIs documented, FFI bindings straightforward. macOS NSTextInputClient verified via Apple docs. No new dependencies risk. |
+| Features | MEDIUM | Table stakes features standard across editors. IME feature set verified via NSTextInputClient protocol. Differentiators (multi-cursor, search) deferred. |
+| Architecture | MEDIUM | Model-view separation proven pattern. Layout rebuild acceptable for small text. IME integration specifics depend on v-gui coordination. |
+| Pitfalls | HIGH | Byte index confusion documented (Pango, GNOME). IME range confusion verified (MS blog, Mozilla bugs). Bidi cursor ambiguity established (Marijn Haverbeke). |
 
 **Overall confidence:** HIGH
 
+VGlyph's existing foundation (hit testing, char rects) de-risks editing. Pango APIs proven in GTK. macOS IME complexity known, mitigated via early testing. Main uncertainty: v-gui integration details (blink timer, keyboard routing) — but VGlyph provides clean API boundary.
+
 ### Gaps to Address
 
-**During Phase 2 (Analysis):**
-- Actual cache hit rates unknown until instrumented. If >95%, layout optimization deprioritized.
-- GPU vs CPU bottleneck balance unclear. If GPU-bound, atlas upload optimization prioritized.
-
-**During Phase 3 (Critical):**
-- FreeType internal caching behavior for metrics unclear. Validate doesn't already cache before
-  duplicating effort.
-- Multi-page atlas OpenGL texture count limits vary by platform (need GL_MAX_TEXTURE_IMAGE_UNITS
-  check).
-
-**During Phase 4 (Memory):**
-- Optimal LRU cache sizes unknown. Need empirical testing to set layout cache (currently 10,000) and
-  glyph cache bounds.
-- Shelf packing algorithm choice (simple shelf vs alternatives) needs benchmarking with VGlyph's glyph
-  size distribution.
-
-**Validation throughout:**
-- GPU driver variance (NVIDIA vs AMD vs Intel). Pitfall #15 warns optimization may work on dev machine
-  but regress on other GPUs.
-- Visual regression testing strategy undefined. Need screenshot comparison for post-optimization
-  validation.
+- **Unicode word segmentation:** Does Pango provide word boundary API or need custom implementation? Resolution: check PangoLogAttr docs during Phase 1 planning. Likely has word_start/word_end flags.
+- **V string indexing:** Does V handle UTF-8 byte slicing correctly? Resolution: validate with emoji test early in Phase 1. V docs claim UTF-8 aware slicing.
+- **Rich text undo:** How to serialize PangoAttrList for undo commands? Resolution: defer until Phase 4 planning. May use attr list copy or parallel style structure.
+- **Clipboard format:** Plain text only or RTF/HTML rich text? Resolution: Phase 3 planning. Start plain text, rich text post-v1.3.
+- **Multi-line scroll:** VGlyph or v-gui responsibility? Resolution: Phase 6 planning. Likely v-gui (viewport management).
+- **Grapheme navigation API:** Does Pango expose grapheme iteration or need manual parsing? Resolution: Phase 1 planning. PangoLogAttr has is_cursor_position flag.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-
-**V Language Profiling:**
-- [V Documentation - Tools](https://docs.vlang.io/tools.html) — -profile flag, module APIs
-- [V Documentation - Performance Tuning](https://docs.vlang.io/performance-tuning.html) — compiler
-  flags, attributes
-- [V Documentation - Conditional Compilation](https://docs.vlang.io/conditional-compilation.html) —
-  `$if debug {}` pattern verified
-- [V benchmark module](https://modules.vlang.io/benchmark.html) — API reference
-- [V time module](https://modules.vlang.io/time.html) — StopWatch API
-
-**Text Rendering Optimization:**
-- [WebRender Texture Atlas Allocation](https://mozillagfx.wordpress.com/2021/02/04/improving-texture-atlas-allocation-in-webrender/)
-  — shelf packing, slab sizes, 30% improvement
-- [Warp Adventures in Text Rendering](https://www.warp.dev/blog/adventures-text-rendering-kerning-glyph-atlases)
-  — glyph atlas, LRU eviction, lazy rasterization
-- [LearnOpenGL - Text Rendering](https://learnopengl.com/In-Practice/Text-Rendering) — texture atlas
-  batching, state change minimization
-
-**GPU Performance:**
-- [NVIDIA GPU Pipeline Optimization](https://developer.nvidia.com/gpugems/gpugems/part-v-performance-and-practicalities/chapter-28-graphics-pipeline-performance)
-  — pipeline stalls, synchronization
-- [ARM Mali Dynamic Resource Updates](https://developer.arm.com/community/arm-community-blogs/b/mobile-graphics-and-gaming-blog/posts/mali-performance-6-efficiently-updating-dynamic-resources)
-  — texture upload performance
+- [Pango Layout docs](https://docs.gtk.org/Pango/class.Layout.html) — cursor APIs, hit testing
+- [Pango LogAttr](https://docs.gtk.org/Pango/struct.LogAttr.html) — grapheme/word boundaries
+- [NSTextInputClient Protocol](https://developer.apple.com/documentation/appkit/nstextinputclient) — IME integration
+- [Microsoft: Glaring Hole in NSTextInputClient](https://learn.microsoft.com/en-us/archive/blogs/rick_schaut/the-glaring-hole-in-the-nstextinputclient-protocol) — range semantics
+- [V Calling C](https://docs.vlang.io/v-and-c.html) — FFI patterns
+- [vlang/gui Repository](https://github.com/vlang/gui) — v-gui integration
 
 ### Secondary (MEDIUM confidence)
-
-**Cache Optimization:**
-- [HarfBuzz 12.3 Performance](https://www.phoronix.com/news/HarfBuzz-12.3-Released) — 20% speedup
-  from caching
-- [LRU Cache Implementation](https://www.educative.io/blog/implement-least-recently-used-cache) —
-  data structure patterns
-- [Open Addressing Collision Resolution](https://www.geeksforgeeks.org/dsa/open-addressing-collision-handling-technique-in-hashing/)
-  — hash collision strategies
-
-**Profiling Techniques:**
-- [Instrumentation-Based Profiling](https://www.computerenhance.com/p/instrumentation-based-profiling)
-  — methodology
-- [Roll your own memory profiling](https://gaultier.github.io/blog/roll_your_own_memory_profiling.html)
-  — manual tracking patterns
-- [Flutter App Performance Profiling 2026](https://startup-house.com/blog/flutter-app-performance) —
-  debug vs release pitfall
-
-**Profiling Overhead:**
-- [Rust metrics crate](https://docs.rs/metrics) — "incredibly low overhead when no recorder installed"
-- [hotpath-rs](https://github.com/pawurb/hotpath-rs) — "zero-cost when disabled through feature flags"
+- [GTK TextView Architecture](https://python-gtk-3-tutorial.readthedocs.io/en/latest/textview.html) — model-view pattern
+- [Marijn Haverbeke: Cursor in Bidi Text](https://marijnhaverbeke.nl/blog/cursor-in-bidi-text.html) — bidi challenges
+- [Mitchell Hashimoto: Grapheme Clusters](https://mitchellh.com/writing/grapheme-clusters-in-terminals) — emoji handling
+- [Command Pattern Undo/Redo](https://codezup.com/the-power-of-command-pattern-undo-redo-functionality/) — undo architecture
+- [GNOME Discourse: Pango Indexes](https://discourse.gnome.org/t/pango-indexes-to-string-positions-correctly/15814) — byte index discipline
+- [NSTextInputClient Example](https://github.com/jessegrosjean/NSTextInputClient) — implementation reference
 
 ### Tertiary (LOW confidence)
-
-**Performance Benchmarks:**
-- [GPU vs CPU Bitmap Performance](https://journalofcloudcomputing.springeropen.com/articles/10.1186/s13677-020-00191-w)
-  — 11.5x average speedup (2020 data, needs validation)
-- [FreeType Performance](https://groups.google.com/g/Golang-Nuts/c/oqRV5P-HQIo/m/gkmbNp1pBwAJ)
-  — community discussion, not official
-
-**Pango Optimization:**
-- [Pango LLVM BOLT](https://www.phoronix.com/forums/forum/phoronix/latest-phoronix-articles/1451706-llvm-bolt-optimizations-net-~6-improvement-for-gnome-s-pango)
-  — ~6% improvement (post-link optimization, not applicable to V)
+- Layout rebuild performance — estimated from VGlyph benchmarks, not measured for mutation workload
+- Cache invalidation strategy — general principle, VGlyph TTL cache specifics TBD
+- Multi-monitor coordinate transforms — NSTextInputClient requirement, v-gui integration TBD
 
 ---
 *Research completed: 2026-02-02*

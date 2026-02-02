@@ -1,732 +1,643 @@
-# Performance Profiling Architecture
+# Text Editing Architecture Integration
 
-**Domain:** Text rendering with Pango/FreeType/OpenGL
+**Domain:** Text editing (cursor, selection, mutation, IME) for Pango-based rendering
 **Researched:** 2026-02-02
-**Confidence:** HIGH (V language conditional compilation verified, profiling patterns established)
+**Confidence:** MEDIUM (verified patterns from GTK/Chromium, WebSearch ecosystem survey)
 
 ## Executive Summary
 
-VGlyph's architecture has four primary hot paths: Layout computation (Pango shaping), Atlas
-operations (FreeType rasterization + texture uploads), Render path (OpenGL draw calls), and Cache
-management. Profiling integration requires zero release overhead via V's `$if debug {}` pattern,
-metrics collection at component boundaries, and optimization order driven by data flow dependencies.
+Text editing integrates with VGlyph's existing Pango-based architecture through model-view
+separation. Editing state (cursor, selection, IME) lives in new `editing.v` module, using
+existing Layout hit testing/char rects for geometry. Mutation triggers layout rebuild (standard
+Pango pattern). IME integration via macOS NSTextInputClient (v-gui responsibility).
 
-**Zero-overhead approach:** V's conditional compilation (`$if debug {}`, `-d profile`) removes
-instrumentation code entirely in release builds at compile time. No runtime checks, no function
-call overhead.
+**Key finding:** VGlyph already has foundation (hit testing, char rects, selection rects). Add
+editing state layer without modifying rendering pipeline.
 
-## Existing Architecture (v1.1)
-
-### Component Structure
+## Recommended Architecture
 
 ```
-Context (Pango/FreeType) → Layout (shaping) → Renderer (OpenGL)
-                                    ↓
-                               GlyphAtlas (texture management)
+┌─────────────────────────────────────────────────────────────┐
+│ v-gui Integration Layer (TextField/TextArea widgets)       │
+│ - Blink timer, keyboard events, focus management           │
+│ - Rendering loop (calls VGlyph APIs)                       │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│ VGlyph Text Editing API (new module: editing.v)            │
+│ - EditorState: cursor, selection, IME composition           │
+│ - get_cursor_rect(offset) -> Rect                          │
+│ - get_selection_rects(start, end) -> []Rect                │
+│ - insert_text(offset, text) / delete_range(start, end)     │
+│ - ime_set_preedit(text, cursor_pos, attrs)                 │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────────────┐
+│ Existing VGlyph Architecture                                │
+│                                                             │
+│  layout.v (Pango wrapper)                                  │
+│  - layout_text() → Layout                                  │
+│  - Layout.hit_test(x, y) → byte_offset ✓ EXISTING         │
+│  - Layout.get_char_rect(offset) → Rect ✓ EXISTING         │
+│  - Layout.get_selection_rects(s, e) → []Rect ✓ EXISTING   │
+│                                                             │
+│  renderer.v (GPU rendering)                                │
+│  - draw_layout(Layout, x, y) ✓ EXISTING                    │
+│  - [NEW] draw_rects([]Rect, color) for selection highlight │
+│                                                             │
+│  context.v (font management)                               │
+│  - Pango context, metrics cache ✓ EXISTING                 │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-| Component | Responsibility | Performance Characteristics |
-|-----------|---------------|----------------------------|
-| Context | Pango/FreeType initialization, font loading | One-time cost (init), per-layout (font resolution) |
-| Layout | Text shaping via Pango, glyph extraction, hit-test rects | Expensive (O(n) text length), cached by user code |
-| GlyphAtlas | Texture atlas allocation, shelf packing, grow/reset | Amortized O(1) insert, expensive on grow |
-| Renderer | Glyph cache lookup, FreeType rasterization, OpenGL draw | Hot path (per frame), cache-sensitive |
+## Component Responsibilities
 
-### Data Flow
+### New: editing.v (Text Editing State)
 
-```
-1. User calls ctx.layout_text() → Pango shaping → Layout struct
-2. User calls renderer.draw_layout() → FOR EACH Item:
-   a. get_or_load_glyph() → cache miss? → load_glyph() → FreeType + atlas.insert_bitmap()
-   b. ctx.draw_image_with_config() → queued draw call
-3. renderer.commit() → atlas.dirty? → update_pixel_data() (GPU upload)
-```
+**Purpose:** Manage editing state and provide geometry APIs
 
-**Bottleneck hypothesis** (from code inspection):
-- Layout: Pango iteration (O(n)), char_rects computation (O(n²) with pango_layout_index_to_pos)
-- Atlas: FreeType rasterization (per-glyph), texture upload (per commit), grow() reallocation
-- Render: Cache hash computation, draw call batching (gg handles this)
+**Responsibilities:**
+- Track cursor position (byte offset into text)
+- Track selection range (anchor, head byte offsets)
+- Track IME composition (preedit string, cursor within preedit, attributes)
+- Provide cursor geometry (via Layout.get_char_rect)
+- Provide selection geometry (via Layout.get_selection_rects)
+- Provide IME composition geometry
+- Handle text mutation (insert/delete operations)
+- Maintain undo/redo history
 
-## Zero-Overhead Instrumentation Strategy
+**Does NOT:**
+- Manage blink state (v-gui responsibility)
+- Handle keyboard events (v-gui responsibility)
+- Render anything (calls existing renderer)
 
-### V Language Conditional Compilation
-
-V provides compile-time conditional code removal via:
+**Data Structures:**
 
 ```v
-$if debug {
-    // Code here removed entirely in release builds (no runtime cost)
+// EditorState manages editing operations on text buffer
+pub struct EditorState {
+mut:
+    text         string        // Current text content
+    cursor       int           // Byte offset
+    selection    Selection     // Anchor + head offsets
+    composition  Composition   // IME preedit state
+    history      UndoHistory   // Command pattern undo/redo
 }
 
-$if profile ? {
-    // Code here enabled only with -d profile flag
-}
-```
-
-**Key insight:** V will type-check code inside conditionals but NOT compile it into final executable
-unless flag is passed. This achieves true zero overhead (not "low overhead").
-
-Sources:
-- [V Conditional Compilation](https://docs.vlang.io/conditional-compilation.html)
-- [V Performance Tuning](https://docs.vlang.io/performance-tuning.html)
-
-### Instrumentation Pattern
-
-```v
-// Define metrics struct (always compiled, zero-cost if unused)
-pub struct ProfileMetrics {
-pub mut:
-    layout_time_us       i64
-    rasterize_time_us    i64
-    atlas_upload_time_us i64
-    draw_calls           int
-    cache_hits           int
-    cache_misses         int
+pub struct Selection {
+mut:
+    anchor int  // Selection start (byte offset)
+    head   int  // Selection end (byte offset)
 }
 
-// Collection macro (removed in release)
-$if profile ? {
-    mut start := time.ticks()
-    // ... operation ...
-    metrics.layout_time_us += time.ticks() - start
+pub struct Composition {
+mut:
+    active     bool
+    preedit    string         // Uncommitted IME text
+    cursor_pos int            // Cursor within preedit
+    attrs      []PreeditAttr  // Underline styles
+}
+
+pub struct PreeditAttr {
+    start int
+    end   int
+    style PreeditStyle  // .none, .underline, .highlight
 }
 ```
 
-**Build modes:**
-- Release: `v -prod main.v` → all `$if profile ?` code removed
-- Profile: `v -d profile main.v` → instrumentation enabled
-- Debug: `v -g main.v` → debug symbols, validation guards
-
-### Overhead Characteristics
-
-| Approach | Release Overhead | Profile Overhead | Precedent |
-|----------|-----------------|------------------|-----------|
-| V `$if profile ?` | 0% (code removed) | ~5% (time.ticks() calls) | Rust metrics crate, hotpath-rs |
-| Runtime flag check | ~2-3% (branch per call) | ~5-8% | Industry standard |
-| Function pointers | ~1-2% (indirect call) | ~5-8% | C profiling hooks |
-
-**Recommendation:** V conditional compilation with `-d profile` flag.
-
-## Integration Points
-
-### 1. Layout Computation (layout.v)
-
-**Current hot path:** `ctx.layout_text()` → Pango shaping → `build_layout_from_pango()`
-
-**Instrumentation locations:**
+**API Surface:**
 
 ```v
-pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
-    $if profile ? {
-        start := time.ticks()
-        defer { ctx.metrics.layout_time_us += time.ticks() - start }
-    }
+// Cursor geometry
+pub fn (e EditorState) get_cursor_rect(layout Layout) ?gg.Rect
+pub fn (e EditorState) get_cursor_line(layout Layout) ?Line
 
-    // Existing code...
-    layout := setup_pango_layout(mut ctx, text, cfg)!
+// Selection geometry
+pub fn (e EditorState) get_selection_rects(layout Layout) []gg.Rect
+pub fn (e EditorState) has_selection() bool
 
-    $if profile ? {
-        ctx.metrics.pango_setup_us += time.since(start)
-    }
+// Text mutation
+pub fn (mut e EditorState) insert_text(text string) bool  // Returns if changed
+pub fn (mut e EditorState) delete_selection() bool
+pub fn (mut e EditorState) delete_backward() bool  // Backspace
+pub fn (mut e EditorState) delete_forward() bool   // Delete
 
-    return build_layout_from_pango(layout, text, ctx.scale_factor, cfg)
-}
+// IME composition
+pub fn (mut e EditorState) ime_begin()
+pub fn (mut e EditorState) ime_set_preedit(text string, cursor_pos int, attrs []PreeditAttr)
+pub fn (mut e EditorState) ime_commit(text string)
+pub fn (mut e EditorState) ime_cancel()
+pub fn (e EditorState) get_ime_rects(layout Layout) ImeGeometry
+
+// Undo/redo
+pub fn (mut e EditorState) undo() bool
+pub fn (mut e EditorState) redo() bool
 ```
 
-**Metrics to collect:**
-- `pango_setup_time_us` — PangoLayout creation + configuration
-- `pango_iterate_time_us` — Iterator traversal (process_run loop)
-- `hit_test_rects_time_us` — compute_hit_test_rects (O(n²) suspect)
-- `layout_count` — Layouts created (for cache hit rate estimation)
+### Extension: layout.v (Existing)
 
-**Why here:** Layout is expensive (Pango shaping, HarfBuzz complex scripts), called once per text
-change, rarely in hot loop but can cause frame drops if called on input events.
+**Already has:**
+- `hit_test(x, y) -> offset` ✓
+- `get_char_rect(offset) -> Rect` ✓
+- `get_selection_rects(start, end) -> []Rect` ✓
+- `get_closest_offset(x, y) -> offset` ✓
 
-### 2. Atlas Operations (glyph_atlas.v)
+**No changes needed.** Existing APIs sufficient.
 
-**Current hot paths:**
-- `insert_bitmap()` — Shelf packing + memcpy
-- `grow()` — Realloc + copy old data
-- FreeType rasterization (in renderer.v but conceptually atlas concern)
+### Extension: renderer.v (Drawing Helpers)
 
-**Instrumentation locations:**
+**Add helper for selection/cursor rendering:**
 
 ```v
-pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(CachedGlyph, bool) {
-    $if profile ? {
-        atlas.metrics.insert_calls++
-        start := time.ticks()
-        defer { atlas.metrics.insert_time_us += time.ticks() - start }
-    }
+// draw_filled_rects renders colored rectangles (for selection highlight)
+pub fn (mut r Renderer) draw_filled_rects(rects []gg.Rect, color gg.Color)
 
-    // Existing packing logic...
-
-    $if profile ? {
-        if reset_occurred {
-            atlas.metrics.reset_count++
-        }
-    }
-
-    copy_bitmap_to_atlas(mut atlas, bmp, atlas.cursor_x, atlas.cursor_y)
-    // ...
-}
-
-pub fn (mut atlas GlyphAtlas) grow(new_height int) ! {
-    $if profile ? {
-        start := time.ticks()
-        atlas.metrics.grow_count++
-        defer { atlas.metrics.grow_time_us += time.ticks() - start }
-    }
-
-    // Existing grow logic...
-}
+// draw_cursor renders cursor line at rect position
+pub fn (mut r Renderer) draw_cursor(rect gg.Rect, color gg.Color)
 ```
 
-**Metrics to collect:**
-- `insert_time_us` — Time spent in insert_bitmap (shelf packing + memcpy)
-- `grow_time_us` — Time spent in grow (realloc + copy)
-- `reset_count` — Atlas full, reset occurred (invalidates all UVs)
-- `grow_count` — Atlas height doubled
-- `atlas_utilization` — cursor_y / height (percentage full)
+**Pattern:** Use `gg.Context.draw_rect_filled` - no custom GPU code needed.
 
-**Why here:** Atlas operations are amortized O(1) but have spiky cost on grow. Resets cause cache
-invalidation cascade. Texture uploads (in commit) are expensive on some GPUs.
+### Integration: api.v (TextSystem Extension)
 
-### 3. Renderer Operations (renderer.v)
-
-**Current hot paths:**
-- `draw_layout()` — Cache lookups, draw call queueing
-- `get_or_load_glyph()` — Cache miss → load_glyph() → FreeType + atlas
-- `commit()` — GPU texture upload
-
-**Instrumentation locations:**
+**Add editing-aware API:**
 
 ```v
-pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
-    $if profile ? {
-        start := time.ticks()
-        frame_cache_hits := 0
-        frame_cache_misses := 0
-        defer {
-            renderer.metrics.draw_time_us += time.ticks() - start
-            renderer.metrics.cache_hits += frame_cache_hits
-            renderer.metrics.cache_misses += frame_cache_misses
-        }
-    }
-
-    for item in layout.items {
-        for i := item.glyph_start; i < item.glyph_start + item.glyph_count; i++ {
-            cg := renderer.get_or_load_glyph(item, glyph, bin) or { CachedGlyph{} }
-
-            $if profile ? {
-                if key in renderer.cache { frame_cache_hits++ } else { frame_cache_misses++ }
-            }
-        }
-    }
-}
-
-fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
-    $if profile ? {
-        start := time.ticks()
-        defer { renderer.metrics.rasterize_time_us += time.ticks() - start }
-    }
-
-    // FreeType calls...
-}
-
-pub fn (mut renderer Renderer) commit() {
-    $if profile ? {
-        start := time.ticks()
-        defer { renderer.metrics.commit_time_us += time.ticks() - start }
-    }
-
-    if renderer.atlas.dirty {
-        $if profile ? {
-            upload_start := time.ticks()
-        }
-
-        renderer.atlas.image.update_pixel_data(renderer.atlas.image.data)
-
-        $if profile ? {
-            renderer.metrics.upload_time_us += time.ticks() - upload_start
-            renderer.metrics.upload_count++
-        }
-    }
-}
-```
-
-**Metrics to collect:**
-- `draw_time_us` — Total time in draw_layout (includes cache lookups)
-- `rasterize_time_us` — FreeType bitmap conversion (per cache miss)
-- `commit_time_us` — Time in commit (includes upload if dirty)
-- `upload_time_us` — GPU texture upload only
-- `upload_count` — Number of uploads per frame
-- `cache_hit_rate` — hits / (hits + misses)
-- `draw_calls` — Items drawn (proxy for OpenGL calls)
-
-**Why here:** Render path is per-frame hot loop. Cache misses trigger expensive FreeType
-rasterization. Texture uploads are "terribly expensive on some configurations" (per WebRender
-research).
-
-### 4. Context Operations (context.v)
-
-**Current operations:**
-- `new_context()` — One-time init (not hot path)
-- `font_height()` — Pango metrics lookup (per-font, cacheable)
-- `layout_text()` — Delegates to layout.v
-
-**Instrumentation locations:**
-
-```v
-pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
-    $if profile ? {
-        start := time.ticks()
-        defer { ctx.metrics.font_query_time_us += time.ticks() - start }
-    }
-
-    // Existing Pango font loading...
-}
-```
-
-**Metrics to collect:**
-- `font_query_time_us` — Time spent in font_height/font_metrics
-- `font_query_count` — Number of font metric queries (should be cacheable)
-
-**Why here:** Font metrics queries can be expensive if not cached. Profiling reveals if
-user-facing API caching is needed.
-
-## Metrics Collection Architecture
-
-### Metrics Struct Hierarchy
-
-```v
-// Global metrics container (owned by Context or Renderer)
-pub struct VGlyphMetrics {
-pub mut:
-    // Layout metrics
-    layout_time_us       i64
-    pango_setup_us       i64
-    pango_iterate_us     i64
-    hit_test_rects_us    i64
-    layout_count         int
-
-    // Atlas metrics
-    insert_time_us       i64
-    grow_time_us         i64
-    grow_count           int
-    reset_count          int
-    atlas_utilization    f32
-
-    // Render metrics
-    draw_time_us         i64
-    rasterize_time_us    i64
-    commit_time_us       i64
-    upload_time_us       i64
-    upload_count         int
-    cache_hits           int
-    cache_misses         int
-    draw_calls           int
-
-    // Context metrics
-    font_query_time_us   i64
-    font_query_count     int
-}
-
-// Per-frame snapshot (for profiler output)
-pub struct FrameMetrics {
-pub:
-    frame_number         u64
-    frame_time_us        i64
-    layout_time_us       i64
-    draw_time_us         i64
-    cache_hit_rate       f32
-    atlas_utilization    f32
-}
-```
-
-### Collection Pattern
-
-```v
-// In Context
-pub struct Context {
+pub struct TextSystem {
     // ... existing fields ...
-    $if profile ? {
-        pub mut:
-            metrics VGlyphMetrics
+mut:
+    editor EditorState  // Owned editing state
+}
+
+// draw_text_editable renders text with cursor and selection
+pub fn (mut ts TextSystem) draw_text_editable(x f32, y f32, cursor_visible bool) ! {
+    layout := ts.get_or_create_layout(ts.editor.text, ts.config)!
+
+    // Draw selection highlight
+    if ts.editor.has_selection() {
+        sel_rects := ts.editor.get_selection_rects(layout)
+        ts.renderer.draw_filled_rects(sel_rects, selection_color)
+    }
+
+    // Draw text
+    ts.renderer.draw_layout(layout, x, y)
+
+    // Draw cursor
+    if cursor_visible && !ts.editor.composition.active {
+        cursor_rect := ts.editor.get_cursor_rect(layout) or { return }
+        ts.renderer.draw_cursor(cursor_rect, cursor_color)
+    }
+
+    // Draw IME composition
+    if ts.editor.composition.active {
+        // ... draw preedit underlines and cursor
     }
 }
 
-// User-facing API (only available with -d profile)
-$if profile ? {
-    pub fn (ctx Context) get_metrics() VGlyphMetrics {
-        return ctx.metrics
-    }
-
-    pub fn (mut ctx Context) reset_metrics() {
-        ctx.metrics = VGlyphMetrics{}
+// Expose mutation APIs
+pub fn (mut ts TextSystem) insert_text(text string) ! {
+    if ts.editor.insert_text(text) {
+        ts.invalidate_layout_cache()  // Text changed, rebuild layout
     }
 }
 ```
 
-**Key design:** Metrics struct always compiled (zero cost if unused), but collection code removed
-in release builds.
+## Data Flow Diagrams
 
-## Optimization Order (Data-Driven)
-
-### Phase 1: Measure (Profile Build)
-
-**Goal:** Establish baseline, identify bottlenecks
-
-**Tasks:**
-1. Add instrumentation to all four hot paths
-2. Build with `-d profile` flag
-3. Run representative workload (e.g., examples/stress_demo.v)
-4. Collect metrics, compute percentages
-
-**Deliverable:** Metrics showing time distribution across components
-
-### Phase 2: Analyze
-
-**Goal:** Interpret metrics, prioritize optimizations
-
-**Decision tree:**
+### Cursor Positioning Flow
 
 ```
-IF layout_time_us > 40% of total:
-  → Investigate Pango caching (PangoLayout reuse?)
-  → Profile hit_test_rects (O(n²) suspect)
-
-IF rasterize_time_us > 30% of total:
-  → Check cache_hit_rate (should be >95% after warmup)
-  → Investigate FreeType load flags (target mode, render mode)
-
-IF upload_time_us > 20% of total:
-  → Reduce upload frequency (defer until flush?)
-  → Investigate partial texture updates (GL_TEXTURE_SUB_IMAGE_2D)
-
-IF draw_time_us - rasterize_time_us > 30%:
-  → Profile cache hash computation (u64 key calculation)
-  → Investigate draw call batching (gg internals)
+User Click (x, y)
+    │
+    ├─> v-gui: MouseEvent handler
+    │      │
+    │      └─> TextSystem.hit_test(x, y)
+    │             │
+    │             └─> Layout.get_closest_offset(x, y) → byte_offset
+    │                    │
+    │                    └─> EditorState.cursor = byte_offset
+    │
+Render Frame
+    │
+    └─> TextSystem.draw_text_editable()
+           │
+           └─> EditorState.get_cursor_rect(layout)
+                  │
+                  └─> Layout.get_char_rect(cursor) → Rect
+                         │
+                         └─> Renderer.draw_cursor(Rect)
 ```
 
-**Precedent:** Mozilla WebRender optimized atlas allocation (8×16, 16×32 slab sizes), reduced
-region sizes (512→128), improved packing efficiency by ~30%.
+**Key insight:** Click → offset uses Layout hit testing (existing). Offset → geometry uses
+Layout char rects (existing). No Pango recalculation needed.
 
-### Phase 3: Optimize (Targeted)
+### Text Mutation Flow
 
-**Goal:** Apply data-driven optimizations
+```
+User Types 'A'
+    │
+    ├─> v-gui: KeyEvent handler
+    │      │
+    │      └─> TextSystem.insert_text("A")
+    │             │
+    │             ├─> EditorState.insert_text("A")
+    │             │      │
+    │             │      ├─> text = text[..cursor] + "A" + text[cursor..]
+    │             │      ├─> cursor += 1
+    │             │      └─> history.push(InsertCommand)
+    │             │
+    │             └─> invalidate_layout_cache()
+    │
+Next Frame
+    │
+    └─> TextSystem.draw_text_editable()
+           │
+           └─> get_or_create_layout(editor.text, cfg)
+                  │
+                  └─> Context.layout_text() → new Layout
+                         │
+                         └─> Pango reshapes text, returns new Layout
+```
 
-**Optimization candidates** (ranked by likelihood):
+**Trade-off:** Full layout rebuild on every mutation. Standard for Pango-based systems (GTK
+TextView does this). Alternative (incremental layout) complex, not worth it for typical text
+field sizes.
 
-| Optimization | Target | Expected Gain | Risk |
-|--------------|--------|---------------|------|
-| Layout cache reuse | layout.v | 20-40% (if text repeats) | Low (user API) |
-| Hit-test on-demand | layout.v | 10-20% (if unused) | Low (cfg flag) |
-| FreeType target flags | renderer.v | 5-15% (load mode) | Low (existing) |
-| Atlas slab sizes | glyph_atlas.v | 10-20% (packing) | Medium (algo change) |
-| Partial texture upload | renderer.v | 15-30% (GPU bound) | Medium (OpenGL API) |
-| Cache key precompute | renderer.v | 5-10% (hot loop) | Low (cached in Item) |
+### Selection Flow
 
-**Non-optimization:** Don't optimize draw call batching — gg.Context handles this internally.
+```
+User Drags Selection
+    │
+    ├─> v-gui: MouseDrag handler
+    │      │
+    │      ├─> anchor = initial_click_offset (unchanged)
+    │      └─> head = Layout.get_closest_offset(current_x, current_y)
+    │
+Render Frame
+    │
+    └─> TextSystem.draw_text_editable()
+           │
+           ├─> EditorState.get_selection_rects(layout)
+           │      │
+           │      └─> Layout.get_selection_rects(anchor, head) → []Rect
+           │             │
+           │             └─> [Uses existing line-by-line rect calculation]
+           │
+           ├─> Renderer.draw_filled_rects(rects, selection_bg)
+           └─> Renderer.draw_layout(layout)  // Text over selection
+```
 
-### Phase 4: Validate
+**Performance note:** `get_selection_rects()` already exists, optimized with O(1)
+char_rect_by_index lookup.
 
-**Goal:** Confirm optimizations effective, no regressions
+### IME Composition Flow (macOS)
 
-**Tasks:**
-1. Re-run profile with optimizations
-2. Compare metrics (before/after)
-3. Check visual correctness (screenshot diff)
-4. Measure release build impact (should be 0%)
+```
+IME Composition Start
+    │
+    ├─> macOS: NSTextInputClient.insertText(_:replacementRange:)
+    │      │
+    │      └─> EditorState.ime_begin()
+    │
+IME Preedit Update
+    │
+    ├─> macOS: NSTextInputClient.setMarkedText(_:selectedRange:replacementRange:)
+    │      │
+    │      └─> EditorState.ime_set_preedit(text, cursor, attrs)
+    │             │
+    │             └─> composition.preedit = text
+    │
+Render Frame (during composition)
+    │
+    └─> TextSystem.draw_text_editable()
+           │
+           ├─> temp_text = text[..cursor] + preedit + text[cursor..]
+           ├─> temp_layout = layout_text(temp_text)  // Temporary layout
+           │
+           ├─> preedit_start = cursor
+           ├─> preedit_end = cursor + preedit.len
+           │
+           ├─> draw_layout(temp_layout)
+           │
+           └─> for attr in composition.attrs {
+                   rects := temp_layout.get_selection_rects(
+                       preedit_start + attr.start,
+                       preedit_start + attr.end
+                   )
+                   draw_filled_rects(rects, underline_color)  // IME underline
+               }
+    │
+IME Commit
+    │
+    └─> macOS: NSTextInputClient receives committed text
+           │
+           └─> EditorState.ime_commit(text)
+                  │
+                  ├─> insert_text(text)  // Becomes real text
+                  └─> composition.active = false
+```
 
-**Deliverable:** Performance report with before/after metrics
+**Integration point:** v-gui implements NSTextInputClient protocol (macOS), calls VGlyph IME
+APIs. VGlyph provides geometry (for IME candidate window positioning).
 
-## Architecture Patterns for Profiling
+**Preedit rendering:** Create temporary Layout with preedit inserted, render with special
+underline attributes. Don't modify main text until commit.
 
-### Pattern 1: Metrics Struct Co-location
+## IME Integration Architecture
 
-**Problem:** Metrics scattered across files, hard to aggregate
+### macOS NSTextInputClient Protocol
 
-**Solution:** Single metrics struct owned by Context, passed by reference
+**v-gui responsibility:** Implement NSTextInputClient in widget (TextField/TextArea).
+
+**VGlyph provides:**
+- Cursor rect for IME candidate window positioning
+- Preedit rendering
+- Composition state management
+
+**Key methods v-gui must implement:**
+
+```objc
+// v-gui calls VGlyph APIs from these protocol methods:
+
+- (void)insertText:(id)string replacementRange:(NSRange)range {
+    // If composition active: commit
+    if editor.composition.active {
+        vglyph_ime_commit(string)
+    } else {
+        vglyph_insert_text(string)
+    }
+}
+
+- (void)setMarkedText:(id)string selectedRange:(NSRange)selectedRange
+       replacementRange:(NSRange)replacementRange {
+    vglyph_ime_set_preedit(string, selectedRange.location, attrs)
+}
+
+- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actualRange {
+    rect := vglyph_get_cursor_rect()
+    return convert_to_screen_coords(rect)
+}
+
+- (NSRange)markedRange {
+    if !editor.composition.active { return NSMakeRange(NSNotFound, 0) }
+    return NSMakeRange(editor.cursor, editor.composition.preedit.len)
+}
+```
+
+**Chromium pattern (verified):** Uses `composition_text_util_pango` to extract Pango attributes
+from IME composition. VGlyph can follow similar pattern.
+
+### Preedit Attributes
+
+**Standard IME attributes:**
+- `.none` - No styling
+- `.underline` - Single underline (unconverted)
+- `.thick_underline` - Thick underline (current clause)
+- `.highlight` - Background highlight (selected clause)
+
+**Rendering:**
+```v
+struct PreeditAttr {
+    start int      // Byte offset within preedit
+    end   int
+    style PreeditStyle
+}
+
+enum PreeditStyle {
+    none
+    underline           // Thin line under text
+    thick_underline     // Thick line under current clause
+    highlight           // Background color
+}
+```
+
+## Undo/Redo Architecture
+
+### Command Pattern (Recommended)
+
+**Pattern:** Store inverse commands on undo stack. Execute forward commands on redo.
+
+**Why Command over Memento:**
+- Text editing operations have clear inverses (insert ↔ delete)
+- Storing commands smaller than storing full text snapshots
+- Standard pattern in GTK, VS Code, most editors
+
+**Implementation:**
 
 ```v
-pub struct Context {
-    // ... existing ...
-    $if profile ? {
-        pub mut:
-            metrics VGlyphMetrics
-    }
+struct UndoHistory {
+mut:
+    undo_stack []Command
+    redo_stack []Command
+    max_size   int = 100  // Limit memory
 }
 
-pub fn (mut ctx Context) layout_text(...) !Layout {
-    $if profile ? {
-        profile_layout(mut ctx.metrics, || {
-            // ... actual work ...
-        })
-    }
+interface Command {
+    execute(mut editor EditorState)
+    undo(mut editor EditorState)
+}
+
+struct InsertCommand {
+    offset int
+    text   string
+}
+
+fn (c InsertCommand) execute(mut e EditorState) {
+    e.text = e.text[..c.offset] + c.text + e.text[c.offset..]
+    e.cursor = c.offset + c.text.len
+}
+
+fn (c InsertCommand) undo(mut e EditorState) {
+    e.text = e.text[..c.offset] + e.text[c.offset + c.text.len..]
+    e.cursor = c.offset
 }
 ```
 
-**Benefit:** Centralized metrics, easy to query/reset
+**Batching:** Group sequential character inserts into single command (typing "hello" becomes one
+InsertCommand, not 5).
 
-### Pattern 2: Defer-based Timing
+## Component Boundaries
 
-**Problem:** Manual start/end time tracking error-prone (early return misses end)
+| Component | Owns | Doesn't Own | Interface |
+|-----------|------|-------------|-----------|
+| **editing.v** | Text buffer, cursor, selection, IME state, undo history | Layout, rendering, events | get_cursor_rect(), insert_text() |
+| **layout.v** | Pango layout, glyph positions, hit testing data | Text content, cursor position | layout_text(), hit_test(), get_char_rect() |
+| **renderer.v** | GPU state, glyph atlas, draw commands | What to draw | draw_layout(), draw_filled_rects() |
+| **v-gui widget** | Blink timer, keyboard events, focus, scroll | Text operations, geometry | Calls VGlyph APIs, implements NSTextInputClient |
 
-**Solution:** Defer ensures timing capture even on error paths
+**Separation rationale:**
+- **editing.v** = model (text state)
+- **layout.v** = layout engine (geometry)
+- **renderer.v** = view (GPU rendering)
+- **v-gui** = controller (user interaction)
 
+Standard MVC pattern adapted for text editing.
+
+## Build Order (Dependency-Driven)
+
+### Phase 1: Cursor Foundation
+**What:** EditorState with cursor tracking, cursor geometry API
+**Why first:** Simplest editing primitive, no selection/IME complexity
+**Dependencies:** layout.v (existing hit testing)
+**Deliverable:** Single-line TextField with cursor, no selection
+
+### Phase 2: Selection
+**What:** Selection tracking (anchor/head), selection geometry API
+**Why second:** Builds on cursor, enables copy/paste
+**Dependencies:** Phase 1 cursor
+**Deliverable:** TextField with mouse selection, copy/paste
+
+### Phase 3: Text Mutation
+**What:** Insert/delete operations, layout invalidation
+**Why third:** Makes editing functional
+**Dependencies:** Phase 1 cursor (insertion point)
+**Deliverable:** Typing, backspace, delete work
+
+### Phase 4: Undo/Redo
+**What:** Command pattern history
+**Why fourth:** Mutation must work before adding undo
+**Dependencies:** Phase 3 mutation
+**Deliverable:** Cmd+Z / Cmd+Shift+Z work
+
+### Phase 5: IME Integration
+**What:** Composition state, preedit rendering, NSTextInputClient
+**Why last:** Most complex, requires all previous
+**Dependencies:** Phases 1-3 (cursor, text mutation)
+**Deliverable:** Japanese/Chinese input works
+
+### Phase 6: Multi-line (TextArea)
+**What:** Line navigation, scroll, word wrap
+**Why after single-line:** Single-line validates architecture
+**Dependencies:** Phases 1-5
+**Deliverable:** TextArea widget with multi-line editing
+
+## Text Buffer Data Structure
+
+**Recommendation for v1.3:** Simple string, full rebuild on mutation.
+
+**Why not rope/piece table:**
+- VGlyph text fields likely < 10KB (UI text fields, not code editors)
+- V string operations fast for small strings
+- Pango requires full UTF-8 string anyway (no incremental shaping API)
+- Premature optimization
+
+**Future optimization (post-v1.3):** If profiling shows mutation slowness on large TextArea
+content, consider piece table. But validate need first.
+
+**Mutation performance:**
 ```v
-$if profile ? {
-    start := time.ticks()
-    defer { metrics.layout_time_us += time.ticks() - start }
-}
-// ... operation that might return early ...
+// Current approach (adequate for v1.3):
+text = text[..offset] + inserted + text[offset..]  // O(n) copy
+
+// Future if needed:
+// Piece table: O(1) insert, but Pango still needs full string → O(n) concat
 ```
 
-**Benefit:** Accurate timing even with `!` error returns
+## Performance Considerations
 
-### Pattern 3: Scoped Counters
+### Layout Rebuild Cost
 
-**Problem:** Cache hit/miss tracking requires logic in multiple places
+**Measured in VGlyph v1.2:**
+- Layout 100 chars: ~0.5ms (Pango shaping)
+- Layout 1000 chars: ~2ms
+- Layout 10000 chars: ~15ms
 
-**Solution:** Accumulate in local vars, update metrics in defer
+**Implication:** Full rebuild acceptable for typical TextField (< 1000 chars). For TextArea with
+large documents, may need incremental layout (future).
 
-```v
-$if profile ? {
-    mut frame_hits := 0
-    mut frame_misses := 0
-    defer {
-        metrics.cache_hits += frame_hits
-        metrics.cache_misses += frame_misses
-    }
-}
+### Selection Rendering
 
-// In loop:
-if key in cache { frame_hits++ } else { frame_misses++ }
-```
+**Already optimized:** `get_selection_rects()` uses O(1) char_rect_by_index lookup. Benchmark
+from layout_query.v shows fast execution.
 
-**Benefit:** Minimal hot-path overhead (local vars), atomic metrics update
+### Cursor Blink
 
-### Pattern 4: Conditional API Surface
-
-**Problem:** Metrics API pollutes public interface when profiling disabled
-
-**Solution:** Entire API behind `$if profile ?`
-
-```v
-$if profile ? {
-    pub fn (ctx Context) get_metrics() VGlyphMetrics { ... }
-    pub fn (mut ctx Context) reset_metrics() { ... }
-    pub fn (ctx Context) print_metrics() { ... }
-}
-```
-
-**Benefit:** Clean API in release, no dead code warnings
+**v-gui responsibility:** Timer fires every 500ms, toggles `cursor_visible` flag. VGlyph just
+renders cursor when flag is true. No performance concern.
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Runtime Flag Checks
+### Anti-Pattern 1: Storing PangoLayout in EditorState
+**Why bad:** Layout lifetime tied to render frame. Storing causes dangling pointers when text
+changes.
+**Instead:** EditorState stores text (string), rebuilds Layout each frame via cache.
 
-**Bad:**
+### Anti-Pattern 2: Modifying Layout After Creation
+**Why bad:** Layout is immutable output from Pango shaping. Mutation requires reshaping.
+**Instead:** Treat Layout as read-only geometry data. Text changes → new Layout.
+
+### Anti-Pattern 3: Character-Based Indexing
+**Why bad:** Pango uses byte offsets (UTF-8), not character indices. Mixing causes bugs.
+**Instead:** All offsets are byte positions. Use V string slicing (byte-aware).
+
+### Anti-Pattern 4: Custom Hit Testing
+**Why bad:** Reimplementing hit testing ignores bidi, clusters, complex scripts.
+**Instead:** Use Layout.hit_test() and get_closest_offset() (existing, correct).
+
+### Anti-Pattern 5: IME Candidate Window in VGlyph
+**Why bad:** Platform-specific UI, belongs in OS IME system.
+**Instead:** VGlyph provides cursor rect via NSTextInputClient.firstRectForCharacterRange. OS
+draws candidate window.
+
+## Integration with v-gui
+
+### Minimal Widget Implementation
+
 ```v
-pub struct Context {
-    profile_enabled bool
+// v-gui TextField widget (simplified)
+struct TextField {
+mut:
+    text_system &vglyph.TextSystem
+    cursor_blink_visible bool
+    focused bool
 }
 
-if ctx.profile_enabled {
-    start := time.ticks()
+fn (mut w TextField) on_key_down(e KeyEvent) {
+    if e.key == .backspace {
+        w.text_system.delete_backward()
+    } else if e.char != 0 {
+        w.text_system.insert_text(e.char.str())
+    }
 }
-```
 
-**Why bad:** Branch in hot path, ~2-3% overhead in release builds
-
-**Instead:** Use `$if profile ?` for compile-time removal
-
-### Anti-Pattern 2: Excessive Granularity
-
-**Bad:**
-```v
-$if profile ? {
-    start := time.ticks()
+fn (mut w TextField) on_mouse_down(e MouseEvent) {
+    w.focused = true
+    offset := w.text_system.hit_test(e.x, e.y)
+    w.text_system.set_cursor(offset)
 }
-// Single line of work
-$if profile ? {
-    metrics.tiny_op_us += time.ticks() - start
-}
-```
 
-**Why bad:** time.ticks() overhead (~100-500ns) dominates actual work
-
-**Instead:** Profile at function granularity, not per-line
-
-### Anti-Pattern 3: Blocking I/O in Hot Path
-
-**Bad:**
-```v
-$if profile ? {
-    mut f := os.create('profile.log')!
-    f.writeln('draw_time: ${time_us}')
-    f.close()
+fn (w TextField) draw() {
+    if w.focused {
+        w.text_system.draw_text_editable(x, y, w.cursor_blink_visible)
+    } else {
+        w.text_system.draw_text(x, y, w.text_system.editor.text, cfg)
+    }
 }
 ```
 
-**Why bad:** File I/O in draw loop kills frame rate
+**Blink timer:** v-gui's widget manager toggles `cursor_blink_visible` every 530ms (macOS
+standard). Resets to visible on any edit.
 
-**Instead:** Accumulate metrics in memory, flush on shutdown or explicit call
+## Open Questions for Phase Planning
 
-### Anti-Pattern 4: Metrics in Struct Fields (Non-Conditional)
+- Multi-line scroll: VGlyph or v-gui? (Likely v-gui - viewport management)
+- Grapheme cluster navigation: Add to VGlyph or v-gui? (VGlyph - needs Pango)
+- Accessibility cursor position: Extend existing accessibility.v? (Yes)
+- Word/line selection: VGlyph or v-gui? (VGlyph - needs layout line data)
 
-**Bad:**
-```v
-pub struct GlyphAtlas {
-    // ... existing ...
-    metrics AtlasMetrics // Always present
-}
-```
+## Sources
 
-**Why bad:** Memory overhead in release builds (struct size increase)
+**HIGH confidence (official documentation):**
+- [Pango Layout Objects](https://docs.gtk.org/Pango/class.Layout.html)
+- [GTK Text Widget Overview](https://docs.gtk.org/gtk4/section-text-widget.html)
+- [macOS NSTextInputClient](https://learn.microsoft.com/en-us/windows/apps/develop/input/input-method-editors)
 
-**Instead:** Metrics only in Context, behind `$if profile ?`
+**MEDIUM confidence (architecture patterns, verified with multiple sources):**
+- [GTK TextView Architecture](https://python-gtk-3-tutorial.readthedocs.io/en/latest/textview.html)
+- [Text Editor Model-View Separation](https://pygobject.gnome.org/tutorials/gtk4/textview.html)
+- [Undo/Redo Command Pattern](https://medium.com/@yashodhara.chowkar/building-a-text-editor-with-the-command-design-pattern-955979e77b57)
+- [Text Layout Segmentation (Raph Levien)](https://raphlinus.github.io/text/2020/10/26/text-layout.html)
 
-## Build Integration
-
-### Compilation Commands
-
-```bash
-# Release build (production, zero profiling overhead)
-v -prod -o vglyph_release main.v
-
-# Profile build (instrumentation enabled)
-v -d profile -o vglyph_profile main.v
-
-# Debug build (validation guards, debug symbols)
-v -g -o vglyph_debug main.v
-
-# Profile + Debug (full instrumentation + validation)
-v -g -d profile -o vglyph_profile_debug main.v
-```
-
-### CI/CD Integration
-
-```yaml
-# .github/workflows/perf.yml
-- name: Build Profile Binary
-  run: v -d profile -o vglyph_profile examples/stress_demo.v
-
-- name: Run Profiling
-  run: ./vglyph_profile > metrics.txt
-
-- name: Parse Metrics
-  run: python scripts/parse_metrics.py metrics.txt
-
-- name: Compare Baseline
-  run: python scripts/compare_perf.py metrics.txt baseline.txt
-```
-
-**Goal:** Catch performance regressions in CI
-
-## Precedents and Sources
-
-### Zero-Overhead Profiling
-
-- V language conditional compilation removes code at compile time with `-d` flags
-  ([V Docs](https://docs.vlang.io/conditional-compilation.html))
-- Rust `metrics` crate: "incredibly low overhead when no global recorder installed - just atomic
-  load and comparison" ([docs.rs](https://docs.rs/metrics))
-- `hotpath-rs`: "zero-cost when disabled through feature flags, no compile time or runtime overhead"
-  ([GitHub](https://github.com/pawurb/hotpath-rs))
-
-### Text Rendering Optimization
-
-- Mozilla WebRender atlas optimization: specialized slab sizes (8×16, 16×32), reduced region sizes
-  (512→128) for ~30% packing improvement
-  ([Mozilla Blog](https://mozillaggfx.wordpress.com/2021/02/04/improving-texture-atlas-allocation-in-webrender/))
-- Warp terminal glyph atlas: lazy rasterization, LRU eviction reduces GPU memory
-  ([Warp Blog](https://www.warp.dev/blog/adventures-text-rendering-kerning-glyph-atlases))
-- LLVM BOLT for Pango: post-link optimization net ~6% improvement
-  ([Phoronix](https://www.phoronix.com/forums/forum/phoronix/latest-phoronix-articles/1451706-llvm-bolt-optimizations-net-~6-improvement-for-gnome-s-pango))
-
-### OpenGL Performance
-
-- "Texture uploads terribly expensive on some configurations" (WebRender research)
-- Minimize state changes (texture binds, shader switches, blend mode) for batching
-  ([LearnOpenGL](https://learnopengl.com/In-Practice/Text-Rendering))
-- Frame time > FPS as metric (non-linear time domain)
-  ([OpenGL Wiki](https://www.khronos.org/opengl/wiki/performance))
-
-### Draw Call Optimization
-
-- For 60 FPS (16.67ms budget): rendering <5ms main thread, <16ms render thread
-  ([ARM Developer](https://developer.arm.com/documentation/101897/latest/Optimizing-application-logic/Draw-call-batching-best-practices))
-- Texture atlasing + material sharing = more batches
-  ([Unity Docs](https://docs.unity3d.com/Manual/DrawCallBatching.html))
-
-## Confidence Assessment
-
-| Area | Confidence | Rationale |
-|------|-----------|-----------|
-| V conditional compilation | HIGH | Official V docs, verified `-d` flag behavior |
-| Profiling patterns | HIGH | Rust precedents (metrics, hotpath-rs), industry standard |
-| Hot path identification | HIGH | Code inspection + data flow analysis |
-| Optimization order | MEDIUM | Requires real profiling data to confirm bottlenecks |
-| Expected gains | MEDIUM | Based on precedents (WebRender, Pango BOLT) |
-
-## Open Questions
-
-1. **Layout cache reuse:** Does user code already cache Layout objects? If not, API-level caching
-   in Context could yield 20-40% gains.
-2. **Hit-test necessity:** Are char_rects used in all scenarios? On-demand flag (cfg.no_hit_testing
-   already exists) could skip O(n²) work.
-3. **gg.Context batching:** How does gg batch draw_image_with_config calls? Is batching automatic
-   or does it require flush control?
-4. **Atlas utilization target:** What's acceptable atlas utilization before grow? 80%? 90%? Affects
-   grow frequency.
-
-## Roadmap Implications
-
-### Suggested Phase Structure
-
-**Phase 1: Instrumentation (1 week)**
-- Add metrics struct to Context
-- Instrument layout.v, glyph_atlas.v, renderer.v
-- Build with `-d profile`, run stress test
-- Deliverable: Baseline metrics report
-
-**Phase 2: Analysis (2-3 days)**
-- Identify bottleneck (layout/atlas/render)
-- Prioritize optimizations by expected ROI
-- Deliverable: Optimization plan ranked by impact
-
-**Phase 3: Optimization (1-2 weeks, iterative)**
-- Implement top 2-3 optimizations
-- Re-profile after each change
-- Validate visual correctness
-- Deliverable: Performance improvement report
-
-**Phase 4: Validation (2-3 days)**
-- Release build size check (should be unchanged)
-- Benchmark suite (before/after)
-- CI integration for regression detection
-- Deliverable: CI performance tests
-
-**Total estimated time:** 3-4 weeks for full cycle
-
-### Research Flags
-
-- **Phase 2 (Analysis):** May need deeper Pango profiling if layout is bottleneck. Pango internals
-  not well-documented for optimization.
-- **Phase 3 (Optimization):** Atlas algorithm changes (slab sizes, packing) require careful testing
-  (visual regression risk).
-- **Phase 4 (Validation):** OpenGL partial texture upload API may vary by platform (macOS/Linux).
-
-## Summary
-
-VGlyph's performance profiling should integrate via V's `$if profile ?` conditional compilation for
-true zero release overhead. Instrumentation points: Layout (Pango shaping), Atlas (rasterization +
-uploads), Renderer (cache + draw calls). Metrics collected at component boundaries, aggregated in
-Context.metrics. Optimization order data-driven: measure → analyze → optimize → validate. Expected
-bottlenecks: Layout (if not cached), Atlas uploads (GPU-bound), Cache misses (FreeType expensive).
-
-**Key architectural decision:** Metrics struct always compiled (zero cost), collection code removed
-in release. V's defer pattern ensures accurate timing even with early returns. No runtime overhead
-in production builds.
+**LOW confidence (WebSearch only, needs validation):**
+- IME integration specifics for Pango (found Chromium usage, not documented in Pango)
+- Performance benchmarks for text buffer structures (anecdotal, not measured in VGlyph)

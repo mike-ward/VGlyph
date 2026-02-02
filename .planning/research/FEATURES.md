@@ -1,322 +1,521 @@
-# Feature Landscape: Text Rendering Performance Optimization
+# Feature Landscape: Text Editing
 
-**Domain:** Text rendering performance profiling and optimization
+**Domain:** Text editing in GUI text rendering libraries
 **Researched:** 2026-02-02
-**Project:** VGlyph v1.2
-**Confidence:** MEDIUM (WebSearch verified with technical sources, some LOW confidence areas
-flagged)
+**Project:** VGlyph v1.3
+**Confidence:** MEDIUM (WebSearch + official docs, macOS NSTextInputClient verified)
 
 ## Executive Summary
 
-Performance optimizations for text rendering fall into four categories: instrumentation (measure
-first), latency optimizations (frame time), memory optimizations (cache efficiency), and GPU
-optimizations (texture management). Research shows most impact comes from atlas management
-(multi-page vs reset), cache strategies (metrics caching, glyph deduplication), and GPU stall
-elimination (async texture updates).
+Text editing requires four core systems: cursor (positioning, movement, visual), selection
+(character/word/line modes, highlighting), mutation (insert/delete/replace with undo/redo), and IME
+(composition for international input). Industry standard behaviors are well-established - double-click
+selects word, triple-click selects line/paragraph, arrow keys move cursor with modifiers for
+word/line jumps.
 
-VGlyph's known bottlenecks align with industry patterns: atlas reset (GPU stalls), hash
-collisions (cache misses), FreeType metrics recomputation (FFI overhead), emoji bitmap scaling
-(CPU overhead). Industry solutions: multi-page atlases, shelf packing, metrics caching, GPU
-scaling.
+VGlyph already has foundation APIs (hit testing, character rect queries) that map directly to cursor
+and selection geometry. Text editing adds state management (cursor position, selection range) and
+mutation operations. IME integration on macOS requires NSTextInputClient protocol implementation.
+
+Three use cases drive requirements: simple input fields (single-line, Enter submits), rich text
+editors (formatted spans, mixed fonts), code editors (line numbers, monospace, syntax highlighting).
+All share core editing features but differ in visual presentation and keyboard behavior.
 
 ## Table Stakes
 
-Features users expect from performance work. Missing = incomplete optimization effort.
+Features users expect from text editing. Missing = product feels broken or unusable.
 
-| Feature | Why Expected | Complexity | Impact | Notes |
-|---------|--------------|------------|--------|-------|
-| **Profiling instrumentation** | Can't optimize without metrics | Low | Foundation | Tracy/Optick integration ~15ns overhead |
-| **Frame time metrics** | 16.67ms budget for 60fps | Low | Critical | CPU/GPU split visibility required |
-| **Memory allocation tracking** | Atlas/cache growth visibility | Low | Critical | Peak/current/growth rate |
-| **Per-operation timing** | Identify hotspots | Medium | High | Layout/rasterize/upload/draw phases |
-| **Cache hit/miss rates** | Validate cache effectiveness | Low | High | Glyph cache, metrics cache, layout cache |
-| **Atlas utilization metrics** | Fragmentation detection | Medium | Medium | Used/total pixels, page count |
+### Cursor Features
 
-**Rationale:** Industry standard profiling requires instrumentation first. Without metrics, all
-optimization is guesswork. 16.67ms frame budget is non-negotiable for 60fps. Cache visibility
-reveals effectiveness.
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| **Cursor positioning** | Click sets cursor | Low | Hit testing (existing) | VGlyph has hit_test_point |
+| **Cursor → rect API** | Draw cursor at position | Low | Character rect (existing) | VGlyph has character_rect |
+| **Arrow key movement** | Left/right/up/down | Low | Layout line info | Character-by-character navigation |
+| **Home/End keys** | Line start/end | Low | Line boundaries | Standard keyboard expectation |
+| **Ctrl+Arrow (macOS Cmd)** | Word boundaries | Medium | Word segmentation | Unicode UAX#29 word breaks |
+| **Cursor blink** | Visual feedback | Low | GUI timer | 500-530ms standard, v-gui responsibility |
+| **Cursor vertical positioning** | Same column when moving up/down | Medium | Column memory | Preserve X position across lines |
+
+**Rationale:** Standard editing expectations across all platforms. Users expect cursor to respond to
+clicks and arrow keys immediately. Blink rate 500-530ms is accessibility standard ([Microsoft
+docs](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/dnacc/flashing-user-interface-and-the-getcaretblinktime-function)).
+
+### Selection Features
+
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| **Click + drag selection** | Visual selection | Low | Hit testing | Standard mouse behavior |
+| **Shift+arrow selection** | Keyboard selection | Low | Cursor movement | Extend selection from anchor |
+| **Double-click → word** | Quick word select | Medium | Word boundaries | Standard across all editors |
+| **Triple-click → line/paragraph** | Quick line select | Medium | Line boundaries | Firefox/Word: paragraph, others: line |
+| **Shift+Home/End** | Select to line start/end | Low | Cursor movement | Extends selection |
+| **Ctrl+A (Cmd+A)** | Select all | Low | Text boundaries | Universal shortcut |
+| **Selection → rects API** | Visual highlighting | Low | Character rects | VGlyph has character_rect |
+| **Selection rendering** | Blue highlight (platform theme) | Low | GUI rendering | v-gui responsibility |
+
+**Rationale:** Standard selection behaviors universal across editors. Double-click word selection and
+triple-click line selection documented standard ([Wikipedia
+triple-click](https://en.wikipedia.org/wiki/Triple-click)). Selection highlighting uses platform
+theme colors for consistency.
+
+### Mutation Features
+
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| **Insert character at cursor** | Typing inserts text | Low | Cursor position | Replace selection if active |
+| **Backspace** | Delete before cursor | Low | Cursor position | Or delete selection |
+| **Delete** | Delete after cursor | Low | Cursor position | Or delete selection |
+| **Cut (Ctrl+X/Cmd+X)** | Remove to clipboard | Medium | Clipboard API | System clipboard integration |
+| **Copy (Ctrl+C/Cmd+C)** | Copy to clipboard | Low | Clipboard API | Preserves text |
+| **Paste (Ctrl+V/Cmd+V)** | Insert from clipboard | Medium | Clipboard API | Replace selection if active |
+| **Undo (Ctrl+Z/Cmd+Z)** | Reverse last action | High | Command history | Command pattern or memento |
+| **Redo (Ctrl+Y/Cmd+Shift+Z)** | Reapply undone action | High | Command history | Redo stack cleared on new edit |
+
+**Rationale:** Basic mutation operations are universal editing expectations. Clipboard operations
+([web.dev clipboard
+API](https://web.dev/patterns/clipboard/copy-text)) standard across platforms. Undo/redo uses command
+pattern ([Command pattern
+article](https://codezup.com/the-power-of-command-pattern-undo-redo-functionality/)) - each edit is
+reversible command. Redo stack cleared when new edit happens after undo.
+
+### IME Features (macOS Primary)
+
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| **Composition window** | Visual feedback for IME | Medium | NSTextInputClient | Underlined text during composition |
+| **Composition text display** | Show uncommitted text | Medium | NSTextInputClient | insertText vs setMarkedText |
+| **Candidate selection** | Choose from candidates | Medium | NSTextInputClient | attributedSubstringForProposedRange |
+| **Composition commit** | Finalize input | Low | NSTextInputClient | Replace marked text with final |
+| **Dead key support** | Accent + letter = accented | Medium | NSTextInputClient | Compose key sequences |
+| **IME positioning** | Candidate window near cursor | Low | Cursor rect | validAttributesForMarkedText |
+
+**Rationale:** IME essential for international text input (Chinese, Japanese, Korean, Vietnamese).
+macOS NSTextInputClient protocol standard ([Apple
+docs](https://developer.apple.com/documentation/appkit/nstextinputclient)). Composition shows
+uncommitted text with underline, candidates appear in popup near cursor. Dead keys ([Wikipedia dead
+key](https://en.wikipedia.org/wiki/Dead_key)) combine accent + base character (e.g., ´ + e = é).
+Recent VS Code bug report Jan 2026 shows dead keys still active concern ([VS Code
+#288972](https://github.com/microsoft/vscode/issues/288972)).
 
 ## Differentiators
 
-Optimizations providing significant measurable impact. Prioritize by ROI.
+Advanced editing features that set editors apart. Not expected by all users, but valued when present.
 
-### High Impact (address known bottlenecks)
+### Enhanced Selection
 
-| Feature | Value Proposition | Complexity | Expected Gain | VGlyph Bottleneck |
-|---------|-------------------|------------|---------------|-------------------|
-| **Multi-page atlas** | Avoid reset stalls | High | Eliminate GPU pipeline stalls | Atlas reset (CONCERNS:64-70) |
-| **Metrics caching** | Reduce FFI overhead | Low | ~10-20% layout speedup | FreeType metrics (CONCERNS:79-83) |
-| **Glyph cache collision handling** | Prevent visual corruption | Medium | Correctness > perf | Hash collisions (CONCERNS:72-77) |
-| **Async texture updates** | Eliminate GPU stalls | High | Eliminate glTexSubImage stalls | Atlas updates during frame |
-| **GPU bitmap scaling** | Offload emoji scaling | Medium | ~50% emoji rendering speedup | Bicubic per frame (CONCERNS:85-89) |
+| Feature | Value Proposition | Complexity | Impact | Use Cases |
+|---------|-------------------|------------|--------|-----------|
+| **Rectangular selection** | Column editing | Medium | High for code | Alt+drag in VS Code |
+| **Multiple cursors** | Edit many places at once | High | High for code | Ctrl+D in VS Code |
+| **Expand selection** | Smart expand to scope | Medium | Medium | Alt+Shift+→ semantic expansion |
+| **Select occurrences** | Find all instances | Medium | High | Ctrl+D in VS Code |
 
-**Rationale:**
-- Multi-page atlas: WebRender reduced from 5 textures to 2-3 with shelf packing, eliminated reset
-  stalls. VGlyph atlas reset clears all cached glyphs mid-frame causing GPU stalls.
-- Metrics caching: HarfBuzz 4.4.0 showed 20% speedup from caching format 2 lookups. VGlyph calls
-  FreeType FFI per glyph run.
-- Collision handling: Industry uses secondary validation or collision chains. VGlyph uses u64 hash
-  without collision detection (silent corruption).
-- Async updates: GPU stalls from glTexSubImage documented. Separate static/dynamic atlases prevent
-  stalls.
-- GPU scaling: Moves bicubic interpolation to fragment shader. VGlyph scales BGRA every frame on
-  CPU.
+**Rationale:** Power user features common in modern editors ([VS Code
+selections](https://learn.microsoft.com/en-us/visualstudio/ide/finding-and-replacing-text?view=visualstudio)).
+Rectangular selection useful for column data. Multiple cursors high productivity for refactoring.
 
-### Medium Impact (general optimizations)
+### Advanced Mutation
 
-| Feature | Value Proposition | Complexity | Expected Gain | Notes |
-|---------|-------------------|------------|---------------|-------|
-| **Shelf packing allocator** | Reduce atlas fragmentation | Medium | 30-50% better packing | WebRender "simple shelf" production choice |
-| **LRU eviction** | Prevent unbounded growth | Medium | Memory bounds | Cache currently unbounded (CONCERNS:135-139) |
-| **Subpixel grid optimization** | Reduce variant explosion | Low | 3x vs unbounded | Warp uses ⅓ pixel bins (0.0, 0.33, 0.66) |
-| **Workload separation** | Optimize per-workload | Medium | Batch efficiency | Glyphs vs images different shaders |
-| **Shape plan caching** | Reduce HarfBuzz overhead | Medium | ~10% shaping speedup | HarfBuzz provides hb_shape_plan_create_cached |
+| Feature | Value Proposition | Complexity | Impact | Use Cases |
+|---------|-------------------|------------|--------|-----------|
+| **Drag and drop text** | Move text visually | Medium | Medium | Mouse-centric editing |
+| **Smart delete** | Delete word/line | Low | Medium | Ctrl+Backspace/Delete |
+| **Duplicate line** | Fast line copying | Low | Medium | Ctrl+D in many editors |
+| **Move line up/down** | Reorder without cut/paste | Medium | Medium | Alt+↑/↓ in VS Code |
+| **Auto-indent** | Maintain indentation | Medium | High for code | Language-specific rules |
 
-**Rationale:**
-- Shelf packing: Mozilla reduced glyph atlas from "multiple textures" to "one or two" with 128x128
-  regions and rectangular slabs.
-- LRU: Standard cache eviction. VGlyph cache map unbounded, only cleared on page reset.
-- Subpixel: Warp documented 3-bin approach balances quality vs memory. VGlyph uses 4 bins already.
-- Workload separation: WebRender separated glyphs/images for shader batching. VGlyph atlas mixes
-  workloads.
-- Shape plan: HarfBuzz supports plan caching. VGlyph may recreate plans.
+**Rationale:** Drag-drop text standard in desktop editors ([EmEditor
+drag-drop](https://www.emeditor.com/text-editor-features/more-features/drag-drop/)). Smart delete
+extends Backspace/Delete to word boundaries. Line operations common in code editors.
 
-### Lower Impact (polish optimizations)
+### Rich Text Specific
 
-| Feature | Value Proposition | Complexity | Expected Gain | Notes |
-|---------|-------------------|------------|---------------|-------|
-| **Temporal accumulation** | Spread sampling cost | Medium | Amortize per-frame cost | 8+4+2+1 samples over frames |
-| **Curve access acceleration** | Reduce intersection tests | High | Vector texture specific | Not applicable to bitmap atlas |
-| **Distance field rendering** | Scalable text quality | High | Quality not performance | Harder on GPU than atlas |
-| **Z-order atlas packing** | Efficient allocation | Medium | ~50% for thin glyphs | Morton codes, transposed optimization |
+| Feature | Value Proposition | Complexity | Impact | Use Cases |
+|---------|-------------------|------------|--------|-----------|
+| **Format selection** | Apply bold/italic/color | Medium | High | Rich text editors |
+| **Span-aware selection** | Respect formatting boundaries | Medium | Medium | Don't split styled runs |
+| **Style preservation on paste** | Keep formatting | High | Medium | Rich text clipboard |
+| **Format painter** | Copy formatting to another region | Medium | Medium | Word-style formatting copy |
 
-**Rationale:**
-- Temporal: Spreads 512 samples across frames. VGlyph uses bitmap atlas (immediate quality).
-- Curve acceleration: Vector texture optimization. VGlyph rasterizes to bitmaps.
-- Distance fields: Higher quality at cost of GPU. VGlyph prioritizes performance.
-- Z-order: Efficient for power-of-two regions. VGlyph likely benefits more from shelf packing.
+**Rationale:** Rich text requires selection to respect styled runs ([Compose Rich
+Editor](https://mohamedrejeb.github.io/compose-rich-editor/getting_started/)). Format selection
+changes attributes on selected range. VGlyph already has styled runs - editing must preserve
+run boundaries when possible.
+
+### Code Editor Specific
+
+| Feature | Value Proposition | Complexity | Impact | Use Cases |
+|---------|-------------------|------------|--------|-----------|
+| **Line numbers gutter** | Reference specific lines | Low | High | Code navigation |
+| **Bracket matching** | Show matching pairs | Medium | High | Code structure |
+| **Auto-close brackets** | Type { gets } | Low | Medium | Reduces errors |
+| **Comment toggle** | Toggle line/block comments | Medium | Medium | Ctrl+/ common |
+| **Code folding** | Collapse sections | High | Medium | Large files |
+
+**Rationale:** Code editors need line numbers ([CodeMirror
+gutter](https://github.com/codemirror/gutter)) for debugging references. Bracket matching shows
+structure. Auto-close reduces syntax errors. For v1.3, line numbers are table stakes, advanced
+features defer.
+
+### Search and Replace
+
+| Feature | Value Proposition | Complexity | Impact | Use Cases |
+|---------|-------------------|------------|--------|-----------|
+| **Find in text** | Locate string | Medium | High | All use cases |
+| **Find next/previous** | Navigate matches | Low | High | F3/Shift+F3 standard |
+| **Replace** | Substitute text | Medium | High | Editing workflow |
+| **Regex support** | Pattern matching | High | Medium | Power users |
+| **Find in selection** | Scoped search | Low | Low | Refine search |
+
+**Rationale:** Find/replace fundamental editing tool ([VS Code
+find](https://learn.microsoft.com/en-us/visualstudio/ide/finding-and-replacing-text?view=visualstudio)).
+Ctrl+F standard across platforms. Regex adds power but complexity. For v1.3, basic find likely
+deferred - not core editing.
 
 ## Anti-Features
 
-Optimizations that add complexity without proportional benefit for VGlyph.
+Features to explicitly NOT build in v1.3. Common mistakes or premature optimization.
 
 | Anti-Feature | Why Avoid | What Instead | Notes |
 |--------------|-----------|--------------|-------|
-| **Vector texture rendering** | Harder on GPU, complex | Bitmap atlas | VGlyph uses FreeType rasterization |
-| **Thread pool for rasterization** | V is single-threaded | Profile first | V design constraint |
-| **Custom allocator for atlas** | Complexity vs gain | System allocator + validation | VGlyph has overflow checks |
-| **SDF (Signed Distance Fields)** | GPU cost > bitmap | Cache multiple sizes | Quality feature not performance |
-| **Supersampling 3x** | Enlarges bitmaps, reduces packing | Subpixel bins (existing) | VGlyph has 4-bin subpixel |
-| **Pre-rendered atlases** | App size bloat, inflexible | Dynamic atlas | Character set unknown at build |
-| **Interpolation between variants** | Complex GPU shader, multi-texture | Snap to nearest bin | VGlyph snaps already |
+| **Multi-level undo history (>100)** | Memory overhead, UX confusion | 50-100 limit | Research shows users rarely undo >20 steps |
+| **Persistent undo across sessions** | Complex serialization | Session-only | Most editors don't persist |
+| **Grammar checking** | Out of scope for rendering lib | External service | Belongs in application layer |
+| **Auto-complete** | Context-dependent, language-specific | External | Not VGlyph responsibility |
+| **Syntax highlighting** | Already exists via styled runs | Use VGlyph run API | VGlyph provides rendering, app provides colors |
+| **Line wrapping logic** | Already exists in Pango | Use Pango layout | VGlyph wraps via Pango width |
+| **Collaborative editing** | Requires CRDT or OT | Future feature | Complex distributed systems problem |
+| **Custom cursor shapes** | Platform inconsistency | Standard I-beam | Accessibility concern |
+| **Selection handles (mobile)** | Desktop-first for v1.3 | Future mobile support | macOS primary target |
+| **Voice input** | Platform service | External | macOS dictation separate |
 
 **Rationale:**
-- Vector textures: Research shows "harder on GPU than atlas textures." VGlyph has working bitmap
-  pipeline.
-- Thread pool: V language single-threaded by design (PROJECT.md). No benefit.
-- Custom allocator: Premature optimization. VGlyph has overflow validation, no malloc failures
-  observed.
-- SDF: Quality optimization, GPU cost higher. Research: "minimize aliasing" not performance.
-- Supersampling: Research: "enlarge glyph bitmaps, reducing atlas packing efficiency." VGlyph has
-  subpixel bins.
-- Pre-rendered: Research shows "application size impact" and "requires all glyphs at build."
-  VGlyph runtime text unknown.
-- Interpolation: Warp rejected: "reading from multiple atlas textures simultaneously." Complexity
-  not worth marginal quality.
+- **Undo limit:** Research shows command pattern with stack ([Command
+  pattern](https://codezup.com/the-power-of-command-pattern-undo-redo-functionality/)). Unlimited
+  undo has memory cost. 50-100 reasonable.
+- **Persistent undo:** Adds serialization complexity. Most editors (Notepad, TextEdit) don't persist
+  undo across sessions.
+- **Grammar/autocomplete:** Application features, not rendering library responsibility. VGlyph
+  provides text rendering, v-gui TextField/TextArea provide higher-level features.
+- **Syntax highlighting:** VGlyph already supports styled runs (PROJECT.md). Application passes
+  colored runs to VGlyph. Not VGlyph's job to parse code.
+- **Line wrapping:** Pango handles wrapping when max_width set. VGlyph uses Pango layout.
+- **Collaborative editing:** Requires conflict resolution algorithms (CRDT/OT). Way beyond v1.3
+  scope. Future feature if needed.
+- **Custom cursors:** Accessibility issue - screen readers expect standard cursor. Platform provides
+  I-beam cursor.
+- **Selection handles:** Mobile pattern (iOS/Android drag handles). macOS primary for v1.3. Mobile
+  support future.
+- **Voice input:** macOS dictation is system service. NSTextInputClient handles. Not custom
+  implementation.
 
 ## Feature Dependencies
 
 ```
-Instrumentation (Foundation)
-  ├─> Frame time metrics
-  ├─> Memory tracking
-  ├─> Cache hit/miss rates
-  └─> Atlas utilization
+Foundation (Existing VGlyph APIs)
+  ├─> hit_test_point() → cursor positioning
+  ├─> character_rect() → cursor rendering
+  └─> character_rect() → selection highlighting
 
-Metrics → Optimization Decisions
-  ├─> Hotspot identification
-  └─> Before/after validation
+Cursor System
+  ├─> Cursor position state (index into text)
+  ├─> Cursor → rect API (position → geometry)
+  ├─> Arrow key movement (character/word/line)
+  └─> Column memory for vertical movement
 
-Atlas optimizations
-  ├─> Multi-page atlas → Requires shelf packing
-  ├─> Shelf packing → Independent optimization
-  └─> Async updates → Requires workload separation
+Selection System
+  ├─> Selection state (start, end indices)
+  ├─> Selection → rects API (range → geometries)
+  ├─> Click+drag handling (hit test)
+  ├─> Shift+arrow handling (extend selection)
+  ├─> Double/triple-click (word/line boundaries)
+  └─> Word boundary detection (Unicode UAX#29)
 
-Cache optimizations
-  ├─> Metrics caching → Independent
-  ├─> Collision handling → Independent
-  └─> LRU eviction → Independent
+Mutation System
+  ├─> Text buffer (mutable string)
+  ├─> Insert/delete operations (at cursor/selection)
+  ├─> Clipboard integration (system API)
+  ├─> Undo/redo stack (command pattern)
+  └─> Selection deletion (clear before insert)
 
-GPU optimizations
-  ├─> Bitmap scaling → Independent
-  └─> Async updates → Depends on multi-page
+IME System (macOS)
+  ├─> NSTextInputClient protocol
+  ├─> Composition state (marked text range)
+  ├─> Candidate window positioning (cursor rect)
+  └─> Dead key handling (character composition)
+
+v-gui Integration
+  ├─> TextField widget (single-line)
+  ├─> TextArea widget (multi-line)
+  ├─> Blink timer (cursor animation)
+  ├─> Keyboard event routing (arrow keys, modifiers)
+  ├─> Focus management (which widget is active)
+  └─> Theme colors (selection highlight, cursor color)
 ```
 
-## Performance Metrics That Matter
+**Implementation Order:**
+1. **Cursor system** → foundation for all editing
+2. **Selection system** → depends on cursor movement
+3. **Mutation system** → depends on cursor + selection
+4. **IME system** → depends on cursor positioning + mutation
+5. **v-gui integration** → depends on all VGlyph APIs
 
-### Critical Metrics (16.67ms budget)
+## Use Case Specific Requirements
 
-| Metric | Target | Why | Measurement |
-|--------|--------|-----|-------------|
-| **Frame time** | <16.67ms | 60fps requirement | Per-frame profiler scope |
-| **Layout time** | <8ms | Half frame budget | Pango shaping + caching |
-| **Atlas upload time** | <2ms | GPU stall risk | glTexSubImage duration |
-| **Draw call time** | <4ms | Rendering overhead | GPU timeline |
-| **Cache hit rate** | >95% | Validate effectiveness | Hits/(hits+misses) |
+### Simple Input Fields (Single-Line)
 
-**Rationale:** Research shows 16.67ms per frame for 60fps. GPU text rendering benchmarked at
-0.1ms for full screen (4K) once cached, suggesting cache effectiveness critical.
+| Feature | Requirement | Differs From Multi-Line | Notes |
+|---------|-------------|-------------------------|-------|
+| **Enter key** | Submit form, don't insert newline | Multi-line inserts newline | Standard behavior ([MDN aria-multiline](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-multiline)) |
+| **Arrow up/down** | Move cursor to start/end | Multi-line moves between lines | Or navigate history (URL bar) |
+| **Line wrapping** | No visual wrapping | Multi-line wraps | Horizontal scroll instead |
+| **Max length** | Enforce character limit | Optional in multi-line | Validation boundary |
+| **Placeholder text** | Show when empty | Same in multi-line | "Enter email..." |
 
-### Memory Metrics
+**Rationale:** Single-line fields HTML `<input type="text">` behavior. Enter submits form ([React
+Native TextInput](https://reactnative.dev/docs/textinput) blurOnSubmit). Arrow up/down move to
+start/end of text, no line navigation.
 
-| Metric | Target | Why | Measurement |
-|--------|--------|-----|-------------|
-| **Atlas utilization** | >70% | Fragmentation check | Used/total pixels |
-| **Cache entry count** | Bounded | Prevent unbounded growth | Map size |
-| **Peak allocation** | <1GB | VGlyph limit | Max atlas + cache size |
-| **Allocation growth rate** | Stable | Leak detection | Delta per 1000 frames |
+### Rich Text Editors (Multi-Line)
 
-**Rationale:** WebRender research emphasized packing efficiency. VGlyph has 1GB max allocation
-limit (PROJECT.md), cache unbounded (CONCERNS.md).
+| Feature | Requirement | Differs From Code Editor | Notes |
+|---------|-------------|--------------------------|-------|
+| **Styled runs** | Preserve formatting on edit | Code: no formatting | VGlyph existing feature |
+| **Format toolbar** | Bold/italic/color buttons | Code: no toolbar | v-gui responsibility |
+| **Paragraph breaks** | Enter creates new paragraph | Code: new line | Semantic structure |
+| **Paste formatting** | Keep or strip formatting | Code: strip formatting | User choice (Paste vs Paste Plain) |
+| **Mixed fonts/sizes** | Font changes mid-text | Code: monospace only | VGlyph supports via runs |
 
-### Cache Effectiveness Metrics
+**Rationale:** Rich text needs styled runs - VGlyph already supports (PROJECT.md). Editing must not
+break run boundaries when inserting plain text. Format changes create new runs. Paste can preserve
+rich text from clipboard or strip to plain.
 
-| Metric | Target | Why | Measurement |
-|--------|--------|-----|-------------|
-| **Glyph cache hit rate** | >95% | Atlas effectiveness | Cache hits/lookups |
-| **Metrics cache hit rate** | >99% | Font reuse common | Cached/FFI calls |
-| **Layout cache hit rate** | >80% | Text reuse | Cached/shaped |
-| **Atlas reset frequency** | 0/frame | Avoid stalls | Resets per 1000 frames |
+### Code Editors (Multi-Line)
 
-**Rationale:** High hit rates validate caching effectiveness. Atlas reset frequency directly
-correlates to GPU stalls (CONCERNS.md bottleneck).
+| Feature | Requirement | Differs From Rich Text | Notes |
+|---------|-------------|------------------------|-------|
+| **Line numbers** | Gutter with line numbers | Rich text: no gutter | CodeMirror gutter implementation |
+| **Monospace font** | Fixed-width characters | Rich text: proportional | Alignment critical |
+| **Tab key** | Insert tab or spaces | Rich text: focus next | Indent code, don't change focus |
+| **Syntax coloring** | Colored keywords via runs | Rich text: user formatting | App applies colors to runs |
+| **Auto-indent** | Match previous line indentation | Rich text: no indent | Language-aware (future) |
 
-## VGlyph-Specific Recommendations
+**Rationale:** Code editors need monospace for alignment. Line numbers essential ([CodeMirror
+gutter](https://github.com/codemirror/gutter)). Tab inserts indentation, doesn't change focus
+(unlike forms). Syntax highlighting uses VGlyph styled runs - app passes colored runs.
 
-### Immediate Priorities (Known Bottlenecks)
+## VGlyph v1.3 MVP Recommendation
 
-1. **Atlas reset stalls** (CONCERNS:64-70)
-   - Impact: GPU pipeline stalls, visual artifacts
-   - Solution: Multi-page atlas with shelf packing
-   - Expected gain: Eliminate mid-frame stalls
-   - Confidence: HIGH (WebRender evidence)
+For v1.3 milestone, focus on **table stakes only** - defer differentiators to post-v1.3.
 
-2. **Hash collisions** (CONCERNS:72-77)
-   - Impact: Visual corruption (silent)
-   - Solution: Secondary validation (glyph_index, subpixel_bin)
-   - Expected gain: Correctness
-   - Confidence: HIGH (industry standard)
+### Include in v1.3 (Table Stakes)
 
-3. **Metrics recomputation** (CONCERNS:79-83)
-   - Impact: Repeated FFI overhead
-   - Solution: Cache keyed by (font, language)
-   - Expected gain: 10-20% layout speedup
-   - Confidence: MEDIUM (HarfBuzz evidence)
+**Cursor:**
+- Cursor positioning (click to position)
+- Cursor → rect API
+- Arrow key movement (char/word/line)
+- Home/End keys
+- Ctrl+Arrow word boundaries
+- Vertical column memory
 
-4. **Emoji bitmap scaling** (CONCERNS:85-89)
-   - Impact: CPU overhead per frame
-   - Solution: GPU scaling or cache scaled bitmaps
-   - Expected gain: 50% emoji rendering
-   - Confidence: MEDIUM (GPU offload principle)
+**Selection:**
+- Click+drag selection
+- Shift+arrow selection
+- Double-click → word
+- Triple-click → line
+- Shift+Home/End
+- Ctrl+A/Cmd+A select all
+- Selection → rects API
 
-### Instrumentation Requirements
+**Mutation:**
+- Insert character at cursor
+- Backspace/Delete
+- Cut/Copy/Paste
+- Undo/Redo (50 action limit)
 
-Before optimization, instrument:
-- Frame time breakdown (layout/rasterize/upload/draw)
-- Cache hit rates (glyph/metrics/layout)
-- Atlas utilization and fragmentation
-- Memory allocation tracking
+**IME:**
+- NSTextInputClient implementation
+- Composition window
+- Candidate selection
+- Dead key support
 
-**Rationale:** Research emphasizes "measure first." Without metrics, optimization is speculation.
+**v-gui Integration:**
+- TextField widget (single-line)
+- TextArea widget (multi-line)
+- Demo with working editor
 
-### Post-Optimization Validation
+### Defer to post-v1.3
 
-Each optimization must show:
-- Before/after frame time comparison
-- Cache hit rate improvement (if cache optimization)
-- Memory reduction (if memory optimization)
-- No visual regression (screenshot comparison)
+**Enhanced selection:**
+- Rectangular selection (Alt+drag)
+- Multiple cursors
+- Expand selection
+- Select occurrences
 
-## MVP Optimization Recommendation
+**Advanced mutation:**
+- Drag and drop text
+- Duplicate line
+- Move line up/down
+- Auto-indent (language-specific)
 
-For v1.2 milestone, prioritize instrumentation + high-impact optimizations:
+**Rich text specific:**
+- Format selection (bold/italic)
+- Format painter
+- Style preservation on paste
 
-**Phase 1: Instrumentation (foundation)**
-1. Tracy/Optick integration for profiling
-2. Frame time breakdown metrics
-3. Cache hit/miss tracking
-4. Memory allocation tracking
+**Code editor specific:**
+- Line numbers gutter → **WAIT:** Actually v1.3 scope if code editor use case
+- Bracket matching
+- Auto-close brackets
+- Comment toggle
+- Code folding
 
-**Phase 2: Address Critical Bottlenecks**
-1. Glyph cache collision handling (correctness)
-2. Metrics caching (FFI reduction)
-3. Multi-page atlas (GPU stall elimination)
-4. GPU emoji scaling (CPU offload)
+**Search:**
+- Find/replace (Ctrl+F)
+- Regex support
 
-**Phase 3: Memory Optimizations**
-1. LRU eviction for unbounded cache
-2. Shelf packing allocator
-3. Workload separation (glyphs vs images)
+**Rationale:** v1.3 delivers complete basic editing - cursor, selection, mutation, IME. Users can
+type, select, cut/paste, undo. That's functional editor. Advanced features (multi-cursor,
+drag-drop, search) add complexity - defer until basic editing proven solid.
 
-**Defer to post-v1.2:**
-- Temporal accumulation (quality > performance)
-- Distance fields (quality feature)
-- Shape plan caching (measure first)
-- Z-order packing (shelf packing likely better)
+**Line numbers decision:** PROJECT.md lists three use cases including "code editors with line
+numbers." If line numbers are v1.3 scope, include basic gutter. If defer, just render text
+content. Needs clarification.
 
-**Rationale:** Instrument first (measure), address known bottlenecks (CONCERNS.md), defer
-speculative optimizations until proven necessary.
+## Complexity Assessment
+
+| Feature Category | Complexity | LOC Estimate | Risk | Notes |
+|------------------|------------|--------------|------|-------|
+| Cursor system | Low | 200-300 | Low | State + geometry APIs |
+| Selection system | Medium | 400-500 | Medium | Word boundaries tricky |
+| Mutation basic | Low | 300-400 | Low | Insert/delete straightforward |
+| Undo/redo | High | 500-700 | Medium | Command pattern, testing complex |
+| Clipboard | Medium | 200-300 | Medium | System API, platform-specific |
+| IME (macOS) | High | 600-800 | High | NSTextInputClient protocol complex |
+| v-gui integration | Medium | 400-600 | Medium | Event routing, focus management |
+
+**Total estimate:** 2,600-3,600 LOC for full v1.3 table stakes.
+
+**Risk areas:**
+- **IME:** NSTextInputClient protocol has many methods, composition state management complex,
+  dead keys edge cases. Highest risk.
+- **Undo/redo:** Command pattern requires all operations reversible, testing combinatorial
+  explosion. Medium-high risk.
+- **Word boundaries:** Unicode UAX#29 word segmentation rules complex, multiple languages.
+  Medium risk.
+- **Selection rendering:** Multi-line selections span multiple rects, bi-directional text
+  complicates geometry. Medium risk.
+
+## Validation Strategy
+
+| Feature | How to Validate | Success Criteria |
+|---------|----------------|------------------|
+| **Cursor** | Click text, arrow keys | Cursor appears at correct position, moves correctly |
+| **Selection** | Click+drag, double/triple-click | Highlighted region matches expected range |
+| **Insert** | Type characters | Text appears at cursor, pushes existing text right |
+| **Delete** | Backspace/Delete | Correct character removed, text shifts left |
+| **Undo/Redo** | Edit sequence, undo all, redo all | Returns to initial state, forward to final state |
+| **Clipboard** | Copy, paste across apps | Text transfers correctly with formatting |
+| **IME** | Type Japanese/Chinese | Composition window appears, candidates selectable, commit works |
+| **Single-line** | Press Enter in TextField | Form submits, no newline inserted |
+| **Multi-line** | Press Enter in TextArea | Newline inserted, cursor moves down |
+
+**Manual testing required for IME** - no good automated test for composition behavior. Need native
+speakers to validate Chinese/Japanese/Korean input.
+
+## Open Questions
+
+- **Line numbers in v1.3?** PROJECT.md mentions "code editors (line numbers)" as use case.
+  Include gutter in v1.3 or defer? Adds complexity but may be expectation.
+- **Undo granularity?** Character-level (every keystroke) or word-level (undo whole word)?
+  Character-level more intuitive but fills undo stack faster.
+- **Selection color?** Use platform theme (NSColor.selectedTextBackgroundColor) or custom?
+  Platform theme ensures accessibility contrast.
+- **IME underline style?** Solid, dotted, thick? macOS standard is thick underline. Follow
+  platform convention.
+- **Clipboard format?** Plain text only or support RTF/HTML? Plain text MVP, rich text future?
+- **Tab key behavior?** Insert tab character or spaces? Configurable? Tab width 4 or 8?
+- **Scroll on cursor movement?** When cursor moves off-screen, scroll into view? Required for
+  usability but VGlyph doesn't handle scrolling - v-gui responsibility?
 
 ## Confidence Assessment
 
 | Topic | Confidence | Reason |
 |-------|------------|--------|
-| Atlas management | HIGH | WebRender/Warp detailed implementations |
-| Cache strategies | MEDIUM | HarfBuzz data, industry patterns |
-| GPU optimizations | MEDIUM | General GPU principles, less text-specific data |
-| Metrics targets | LOW | Limited 2026 text rendering benchmarks |
-| VGlyph applicability | HIGH | CONCERNS.md directly maps to research |
+| Cursor/selection behaviors | HIGH | Universal standards, well-documented |
+| Keyboard shortcuts | HIGH | Platform conventions stable (Ctrl+C, Ctrl+V, etc.) |
+| IME requirements | MEDIUM | NSTextInputClient documented but complex implementation |
+| Undo/redo patterns | HIGH | Command pattern well-established |
+| Word boundaries | MEDIUM | Unicode UAX#29 standard but complex rules |
+| Use case differences | HIGH | HTML input vs textarea, documented behaviors |
+| macOS platform integration | MEDIUM | NSTextInputClient exists, implementation details less clear |
 
 **Gaps:**
-- Limited 2026-specific text rendering benchmarks (mostly 3D rendering data)
-- FreeType/Pango performance profiling data sparse (WebSearch only)
-- V language profiling integration unknown (need V-specific research)
+- Unicode word segmentation implementation details (UAX#29 rules)
+- NSTextInputClient composition state machine (marked text lifecycle)
+- Dead key sequences for non-Latin scripts (beyond basic accents)
+- Bi-directional text selection geometry (RTL languages)
 
 **Verification needed:**
-- Tracy/Optick compatibility with V language FFI
-- FreeType metrics caching implementation details
-- Multi-page atlas texture limits (OpenGL version specific)
+- Does Pango provide word boundary API or need ICU BreakIterator?
+- Does v-gui have clipboard API or need platform-specific implementation?
+- Does V language have Unicode string indexing issues (UTF-8 bytes vs grapheme clusters)?
 
 ## Sources
 
-**Atlas Management:**
-- [Warp Adventures in Text Rendering](https://www.warp.dev/blog/adventures-text-rendering-kerning-glyph-atlases)
-- [WebRender Texture Atlas Allocation](https://mozillagfx.wordpress.com/2021/02/04/improving-texture-atlas-allocation-in-webrender)
-- [GPU Text Rendering Techniques](https://www.monotype.com/resources/expertise/gpu-text-rendering-techniques)
-- [Monotype Labs GPU Text Rendering](https://medium.com/@monotype.labs/gpu-text-rendering-techniques-563533646891)
+**Text Editing Behaviors:**
+- [Cursor (user interface) - Wikipedia](https://en.wikipedia.org/wiki/Cursor_(user_interface))
+- [Text Editor Cursor Behavior (emacs, vi, Notepad++)](http://xahlee.info/emacs/emacs/text_editor_cursor_behavior.html)
+- [Microsoft Word text selection shortcuts](https://www.avantixlearning.ca/microsoft-word/check-out-these-timesaving-microsoft-word-selection-shortcuts-to-quickly-select-text/)
+- [Triple-click - Wikipedia](https://en.wikipedia.org/wiki/Triple-click)
 
-**Performance Profiling:**
-- [Rendering Crispy Text On The GPU](https://osor.io/text)
-- [Android GPU Rendering Inspection](https://developer.android.com/topic/performance/rendering/inspect-gpu-rendering)
-- [Tracy Profiler](https://github.com/aclysma/profiling)
+**Cursor Visual Standards:**
+- [Cursor Blink Rate - Microsoft Learn](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/dnacc/flashing-user-interface-and-the-getcaretblinktime-function)
+- [Change Text Cursor Blink Rate in Windows](https://www.tenforums.com/tutorials/95372-change-text-cursor-blink-rate-windows.html)
 
-**Cache Optimization:**
-- [HarfBuzz 12.3 Performance Improvements](https://www.phoronix.com/news/HarfBuzz-12.3-Released)
-- [HarfBuzz Plans and Caching](https://harfbuzz.github.io/shaping-plans-and-caching.html)
-- [LFU vs LRU Cache Eviction](https://redis.io/blog/lfu-vs-lru-how-to-choose-the-right-cache-eviction-policy/)
+**IME and Composition:**
+- [NSTextInputClient - Apple Developer Documentation](https://developer.apple.com/documentation/appkit/nstextinputclient)
+- [GitHub - jessegrosjean/NSTextInputClient](https://github.com/jessegrosjean/NSTextInputClient)
+- [Text Editing - Apple Developer Archive](https://developer.apple.com/library/archive/documentation/TextFonts/Conceptual/CocoaTextArchitecture/TextEditing/TextEditing.html)
+- [Dead key - Wikipedia](https://en.wikipedia.org/wiki/Dead_key)
+- [VS Code Issue #288972 - Dead keys broken in terminal](https://github.com/microsoft/vscode/issues/288972)
 
-**Texture Packing:**
-- [Texture Atlas Packing Algorithm](https://lisyarus.github.io/blog/posts/texture-packing.html)
-- [Texture Atlas Optimization in 3D](https://garagefarm.net/blog/texture-atlas-optimizing-textures-in-3d-rendering)
+**Clipboard:**
+- [How to copy text - web.dev](https://web.dev/patterns/clipboard/copy-text)
+- [Clipboard Module - Quill Rich Text Editor](https://quilljs.com/docs/modules/clipboard)
 
-**Emoji/Color Glyphs:**
-- [Color Emoji FreeType Rendering](https://gist.github.com/jokertarot/7583938)
-- [Alacritty Color Emoji PR](https://github.com/alacritty/alacritty/pull/3011)
+**Undo/Redo:**
+- [Undo/redo implementations in text editors](https://www.mattduck.com/undo-redo-text-editors)
+- [The Command Pattern: Undo/Redo](https://codezup.com/the-power-of-command-pattern-undo-redo-functionality/)
+- [Design Thoughts: Undo Redo - super_editor Wiki](https://github.com/superlistapp/super_editor/wiki/Design-Thoughts:-Undo-Redo)
 
-**GPU Stalls:**
-- [NVIDIA GPU Pipeline Optimization](https://developer.nvidia.com/gpugems/gpugems/part-v-performance-and-practicalities/chapter-28-graphics-pipeline-performance)
-- [ARM Mali Dynamic Resource Updates](https://developer.arm.com/community/arm-community-blogs/b/mobile-graphics-and-gaming-blog/posts/mali-performance-6-efficiently-updating-dynamic-resources)
+**Word Boundaries:**
+- [Text boundaries - Microsoft Learn](https://learn.microsoft.com/en-us/globalization/fonts-layout/text-boundaries)
+- [Boundary Analysis - ICU Documentation](https://unicode-org.github.io/icu/userguide/boundaryanalysis/)
+- [Text Boundary Analysis in Java](https://icu-project.org/docs/papers/text_boundary_analysis_in_java/)
+
+**Single-Line vs Multi-Line:**
+- [ARIA: aria-multiline attribute - MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-multiline)
+- [TextInput - React Native](https://reactnative.dev/docs/textinput)
+
+**Rich Text Editing:**
+- [Compose Rich Editor - Getting Started](https://mohamedrejeb.github.io/compose-rich-editor/getting_started/)
+- [CKEditor 5 Documentation - Drag and drop](https://ckeditor.com/docs/ckeditor5/latest/features/drag-drop.html)
+
+**Code Editor Features:**
+- [CodeMirror gutter](https://github.com/codemirror/gutter)
+- [CodeMirror Gutter Example](https://codemirror.net/examples/gutter/)
+- [IntelliJ IDEA - Editor gutter](https://www.jetbrains.com/help/idea/editor-gutter.html)
+
+**Find/Replace:**
+- [Find and replace text - Visual Studio](https://learn.microsoft.com/en-us/visualstudio/ide/finding-and-replacing-text?view=visualstudio)
+- [EmEditor Find and Replace](https://www.emeditor.com/text-editor-features/coding/find-replace/)
+
+**Accessibility:**
+- [CKEditor Accessibility Support](https://ckeditor.com/docs/ckeditor4/latest/guide/dev_a11y.html)
+- [ARIA - Accessibility - MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA)
 
 ---
 
-*Research complete. Features categorized for v1.2 roadmap creation.*
+*Research complete. Features categorized for v1.3 roadmap creation.*
