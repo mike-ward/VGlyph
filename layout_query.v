@@ -312,3 +312,126 @@ pub fn (l Layout) move_cursor_word_right(byte_index int) int {
 	}
 	return max_index
 }
+
+// move_cursor_line_start returns the byte index of the start of the current line.
+pub fn (l Layout) move_cursor_line_start(byte_index int) int {
+	for line in l.lines {
+		line_end := line.start_index + line.length
+		if byte_index >= line.start_index && byte_index <= line_end {
+			return line.start_index
+		}
+	}
+	// Fallback: return 0
+	return 0
+}
+
+// move_cursor_line_end returns the byte index of the end of the current line.
+pub fn (l Layout) move_cursor_line_end(byte_index int) int {
+	for line in l.lines {
+		line_end := line.start_index + line.length
+		if byte_index >= line.start_index && byte_index <= line_end {
+			return line_end
+		}
+	}
+	// Fallback: return max index
+	if l.log_attrs.len > 0 {
+		return l.log_attrs.len - 1
+	}
+	return 0
+}
+
+// move_cursor_up returns byte index on previous line at similar x position.
+// preferred_x is the x coordinate to try to maintain (pass -1 to use cursor's current x).
+pub fn (l Layout) move_cursor_up(byte_index int, preferred_x f32) int {
+	if l.lines.len == 0 {
+		return byte_index
+	}
+
+	// Find current line index
+	mut current_line_idx := -1
+	mut target_x := preferred_x
+	for i, line in l.lines {
+		line_end := line.start_index + line.length
+		if byte_index >= line.start_index && byte_index <= line_end {
+			current_line_idx = i
+			// If no preferred_x, use current cursor x
+			if target_x < 0 {
+				if pos := l.get_cursor_pos(byte_index) {
+					target_x = pos.x
+				} else {
+					target_x = line.rect.x
+				}
+			}
+			break
+		}
+	}
+
+	if current_line_idx <= 0 {
+		// Already on first line or not found
+		return byte_index
+	}
+
+	// Find closest char on previous line
+	prev_line := l.lines[current_line_idx - 1]
+	return l.find_closest_index_in_line(prev_line, target_x)
+}
+
+// move_cursor_down returns byte index on next line at similar x position.
+pub fn (l Layout) move_cursor_down(byte_index int, preferred_x f32) int {
+	if l.lines.len == 0 {
+		return byte_index
+	}
+
+	// Find current line index
+	mut current_line_idx := -1
+	mut target_x := preferred_x
+	for i, line in l.lines {
+		line_end := line.start_index + line.length
+		if byte_index >= line.start_index && byte_index <= line_end {
+			current_line_idx = i
+			if target_x < 0 {
+				if pos := l.get_cursor_pos(byte_index) {
+					target_x = pos.x
+				} else {
+					target_x = line.rect.x
+				}
+			}
+			break
+		}
+	}
+
+	if current_line_idx < 0 || current_line_idx >= l.lines.len - 1 {
+		// Not found or already on last line
+		return byte_index
+	}
+
+	// Find closest char on next line
+	next_line := l.lines[current_line_idx + 1]
+	return l.find_closest_index_in_line(next_line, target_x)
+}
+
+// find_closest_index_in_line returns the byte index closest to target_x within the given line.
+fn (l Layout) find_closest_index_in_line(line Line, target_x f32) int {
+	line_end := line.start_index + line.length
+	mut closest_idx := line.start_index
+	mut min_dist := f32(1e9)
+
+	for i in line.start_index .. line_end {
+		rect_idx := l.char_rect_by_index[i] or { continue }
+		cr := l.char_rects[rect_idx]
+		char_mid_x := cr.rect.x + cr.rect.width / 2
+		dist := math.abs(target_x - char_mid_x)
+		if dist < min_dist {
+			min_dist = dist
+			closest_idx = i
+		}
+	}
+
+	// Check if closer to end of line
+	end_x := line.rect.x + line.rect.width
+	if math.abs(target_x - end_x) < min_dist {
+		return line_end
+	}
+
+	return closest_idx
+}
