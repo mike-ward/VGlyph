@@ -45,11 +45,17 @@ Requirements for text editing milestone. Each maps to roadmap phases.
 - [ ] **IME-03**: Candidate window positions near cursor
 - [ ] **IME-04**: Dead keys compose characters (e.g., ` + e = è)
 
-### v-gui Integration
+### API & Demo
 
-- [ ] **VGUI-01**: Integrate VGlyph editing APIs into existing view_input.v
-- [ ] **VGUI-02**: VGlyph-backed cursor/selection rendering in v-gui
-- [ ] **VGUI-03**: Demo application demonstrating all editing features
+- [ ] **API-01**: Editing API documented with examples for all operations
+- [ ] **API-02**: Demo application demonstrates cursor, selection, mutation, undo
+- [ ] **API-03**: Demo exercises IME composition (Japanese input test)
+
+### Accessibility
+
+- [ ] **ACC-01**: VoiceOver announces cursor position changes
+- [ ] **ACC-02**: VoiceOver announces selection changes
+- [ ] **ACC-03**: IME composition state accessible to VoiceOver
 
 ## Future Requirements
 
@@ -91,38 +97,41 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CURS-01 | — | Pending |
-| CURS-02 | — | Pending |
-| CURS-03 | — | Pending |
-| CURS-04 | — | Pending |
-| CURS-05 | — | Pending |
-| SEL-01 | — | Pending |
-| SEL-02 | — | Pending |
-| SEL-03 | — | Pending |
-| SEL-04 | — | Pending |
-| SEL-05 | — | Pending |
-| MUT-01 | — | Pending |
-| MUT-02 | — | Pending |
-| MUT-03 | — | Pending |
-| MUT-04 | — | Pending |
-| MUT-05 | — | Pending |
-| MUT-06 | — | Pending |
-| UNDO-01 | — | Pending |
-| UNDO-02 | — | Pending |
-| UNDO-03 | — | Pending |
-| IME-01 | — | Pending |
-| IME-02 | — | Pending |
-| IME-03 | — | Pending |
-| IME-04 | — | Pending |
-| VGUI-01 | — | Pending |
-| VGUI-02 | — | Pending |
-| VGUI-03 | — | Pending |
+| CURS-01 | Phase 11 | Pending |
+| CURS-02 | Phase 11 | Pending |
+| CURS-03 | Phase 11 | Pending |
+| CURS-04 | Phase 11 | Pending |
+| CURS-05 | Phase 11 | Pending |
+| SEL-01 | Phase 12 | Pending |
+| SEL-02 | Phase 12 | Pending |
+| SEL-03 | Phase 12 | Pending |
+| SEL-04 | Phase 12 | Pending |
+| SEL-05 | Phase 12 | Pending |
+| MUT-01 | Phase 13 | Pending |
+| MUT-02 | Phase 13 | Pending |
+| MUT-03 | Phase 13 | Pending |
+| MUT-04 | Phase 13 | Pending |
+| MUT-05 | Phase 13 | Pending |
+| MUT-06 | Phase 13 | Pending |
+| UNDO-01 | Phase 14 | Pending |
+| UNDO-02 | Phase 14 | Pending |
+| UNDO-03 | Phase 14 | Pending |
+| IME-01 | Phase 15 | Pending |
+| IME-02 | Phase 15 | Pending |
+| IME-03 | Phase 15 | Pending |
+| IME-04 | Phase 15 | Pending |
+| API-01 | Phase 16 | Pending |
+| API-02 | Phase 16 | Pending |
+| API-03 | Phase 16 | Pending |
+| ACC-01 | Phase 17 | Pending |
+| ACC-02 | Phase 17 | Pending |
+| ACC-03 | Phase 17 | Pending |
 
 **Coverage:**
-- v1.3 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26
+- v1.3 requirements: 29 total
+- Mapped to phases: 29
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-02*
-*Last updated: 2026-02-02 after initial definition*
+*Last updated: 2026-02-02 after roadmap creation*
