@@ -7,11 +7,11 @@
 
 ### Memory Operations (glyph_atlas.v)
 
-- [ ] **MEM-01**: Add null check after vcalloc at line 72 before dereferencing
-- [ ] **MEM-02**: Add null check after vcalloc at line 389 before dereferencing
-- [ ] **MEM-03**: Add null check after vcalloc at line 439 before dereferencing
-- [ ] **MEM-04**: Add null checks after vcalloc at lines 447-450 before dereferencing
-- [ ] **MEM-05**: Validate width * height doesn't overflow before allocation
+- [x] **MEM-01**: Add null check after vcalloc at line 72 before dereferencing
+- [x] **MEM-02**: Add null check after vcalloc at line 389 before dereferencing
+- [x] **MEM-03**: Add null check after vcalloc at line 439 before dereferencing
+- [x] **MEM-04**: Add null checks after vcalloc at lines 447-450 before dereferencing
+- [x] **MEM-05**: Validate width * height doesn't overflow before allocation
 
 ### Error Propagation (glyph_atlas.v)
 
@@ -23,13 +23,13 @@
 
 ### Pointer Safety (layout.v)
 
-- [ ] **PTR-01**: Document unsafe pointer cast assumption at line 156
-- [ ] **PTR-02**: Add $if debug block with runtime type validation
+- [x] **PTR-01**: Document unsafe pointer cast assumption at line 156
+- [x] **PTR-02**: Add $if debug block with runtime type validation
 
 ### String Lifetime (layout.v)
 
-- [ ] **STR-01**: Clone object.id string before storing in Pango attribute
-- [ ] **STR-02**: Free cloned string when layout is destroyed
+- [x] **STR-01**: Clone object.id string before storing in Pango attribute
+- [x] **STR-02**: Free cloned string when layout is destroyed
 
 ## v2 Requirements
 
@@ -49,20 +49,20 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MEM-01 | Phase 2 | Pending |
-| MEM-02 | Phase 2 | Pending |
-| MEM-03 | Phase 2 | Pending |
-| MEM-04 | Phase 2 | Pending |
-| MEM-05 | Phase 2 | Pending |
+| MEM-01 | Phase 2 | Complete |
+| MEM-02 | Phase 2 | Complete |
+| MEM-03 | Phase 2 | Complete |
+| MEM-04 | Phase 2 | Complete |
+| MEM-05 | Phase 2 | Complete |
 | ERR-01 | Phase 1 | Complete |
 | ERR-02 | Phase 1 | Complete |
 | ERR-03 | Phase 1 | Complete |
 | ERR-04 | Phase 1 | Complete |
 | ERR-05 | Phase 1 | Complete |
-| PTR-01 | Phase 3 | Pending |
-| PTR-02 | Phase 3 | Pending |
-| STR-01 | Phase 3 | Pending |
-| STR-02 | Phase 3 | Pending |
+| PTR-01 | Phase 3 | Complete |
+| PTR-02 | Phase 3 | Complete |
+| STR-01 | Phase 3 | Complete |
+| STR-02 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 14 total
@@ -71,4 +71,4 @@
 
 ---
 *Requirements defined: 2026-02-01*
-*Last updated: 2026-02-01 after roadmap creation*
+*Last updated: 2026-02-01 after phase 3 completion*

@@ -14,7 +14,7 @@ issues. All work targets glyph_atlas.v and layout.v files identified in CONCERNS
 
 - [x] **Phase 1: Error Propagation** - Change new_glyph_atlas to return errors
 - [x] **Phase 2: Memory Safety** - Add null checks and overflow validation
-- [ ] **Phase 3: Layout Safety** - Document pointer cast, fix string lifetime
+- [x] **Phase 3: Layout Safety** - Document pointer cast, fix string lifetime
 
 ## Phase Details
 
@@ -60,7 +60,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 03-01-PLAN.md - Document pointer cast, fix string lifetime
+- [x] 03-01-PLAN.md - Document pointer cast, fix string lifetime
 
 ## Progress
 
@@ -68,7 +68,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Error Propagation | 1/1 | Complete | 2026-02-01 |
 | 2. Memory Safety | 1/1 | Complete | 2026-02-01 |
-| 3. Layout Safety | 0/1 | Ready | - |
+| 3. Layout Safety | 1/1 | Complete | 2026-02-01 |
 
 ---
 *Roadmap created: 2026-02-01*
