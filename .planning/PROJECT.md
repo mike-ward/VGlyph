@@ -30,7 +30,12 @@ Reliable text rendering without crashes or undefined behavior.
 
 ### Active
 
-(None - run `/gsd:new-milestone` to define next goals)
+**v1.1 Fragile Area Hardening**
+
+- [ ] Layout iteration state machine hardening (RAII wrappers, lifecycle validation)
+- [ ] Pango attribute list lifecycle safety (ownership clarity, leak guards)
+- [ ] FreeType face rendering state validation (sequence enforcement)
+- [ ] Vertical text coordinate transformation safety (clearer transforms)
 
 ### Out of Scope
 
@@ -74,4 +79,4 @@ and layout.v based on CONCERNS.md audit.
 | Silent errors in grow() | No log.error, just return error | Good - caller decides response |
 
 ---
-*Last updated: 2026-02-01 after v1.0 milestone*
+*Last updated: 2026-02-02 after v1.1 milestone start*
