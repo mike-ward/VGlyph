@@ -1,15 +1,13 @@
-# VGlyph Memory & Safety Hardening
+# VGlyph
 
 ## What This Is
 
-Addressing 4 memory and safety issues documented in CONCERNS.md for the VGlyph text
-rendering library. This hardens unsafe memory operations, adds proper error propagation,
-and documents lifetime requirements.
+Text rendering library for V language using Pango for shaping and FreeType for rasterization.
+Atlas-based GPU rendering with layout caching, subpixel positioning, and rich text support.
 
 ## Core Value
 
-Prevent crashes and undefined behavior from memory safety issues in the glyph atlas
-and layout systems.
+Reliable text rendering without crashes or undefined behavior.
 
 ## Requirements
 
@@ -23,49 +21,57 @@ and layout systems.
 - Rich text with styled runs — existing
 - Hit testing and character rect queries — existing
 - macOS accessibility integration — existing
+- Error-returning GlyphAtlas API (`!GlyphAtlas`) — v1.0
+- Dimension/overflow validation before allocation — v1.0
+- 1GB max allocation limit with overflow protection — v1.0
+- grow() error propagation through insert_bitmap — v1.0
+- Pango pointer cast documented with debug validation — v1.0
+- Inline object ID string lifetime management — v1.0
 
 ### Active
 
-- [ ] Add null checks after vcalloc in glyph atlas hot paths
-- [ ] Validate size calculations prevent integer overflow before allocation
-- [ ] Document unsafe pointer cast assumption in Pango iteration
-- [ ] Add debug-build runtime validation for Pango pointer cast
-- [ ] Replace asserts with error returns in new_glyph_atlas
-- [ ] Propagate allocation errors through GlyphAtlas API
-- [ ] Document string lifetime requirement for inline object IDs
-- [ ] Consider Arena allocation for inline object strings
+(None - run `/gsd:new-milestone` to define next goals)
 
 ### Out of Scope
 
-- Performance optimizations — separate concern (CONCERNS.md Performance Bottlenecks)
-- Tech debt cleanup — separate concern (CONCERNS.md Tech Debt)
-- Test coverage expansion — separate concern (CONCERNS.md Test Coverage Gaps)
-- Dependency version pinning — separate concern (CONCERNS.md Dependencies at Risk)
+- Performance optimizations — separate concern (CONCERNS.md)
+- Tech debt cleanup — separate concern (CONCERNS.md)
+- Test coverage expansion — separate concern (CONCERNS.md)
+- Dependency version pinning — separate concern (CONCERNS.md)
+- Thread safety — V is single-threaded by design
 
 ## Context
 
-VGlyph is a V language text rendering library using Pango for shaping and FreeType for
-rasterization. The glyph atlas uses unsafe memory operations (vmemcpy, vmemset, vcalloc)
-for performance in hot paths. CONCERNS.md audit identified 4 memory/safety issues that
-could cause crashes or undefined behavior.
+VGlyph is a V language text rendering library. v1.0 hardened memory operations in glyph_atlas.v
+and layout.v based on CONCERNS.md audit.
 
-**Files involved:**
-- `glyph_atlas.v` — Issues #1, #3 (memory ops, overflow checks)
-- `layout.v` — Issues #2, #4 (pointer cast, string lifetime)
+**Current State:**
+- 8,301 LOC V
+- Tech stack: Pango, FreeType, Cairo, OpenGL
+- Memory/safety issues from CONCERNS.md addressed
+
+**Files modified in v1.0:**
+- `glyph_atlas.v` — Error-returning API, allocation validation, grow() propagation
+- `layout.v` — Pointer cast docs, string cloning
+- `layout_types.v` — cloned_object_ids field, destroy() method
+- `renderer.v` — Callers handle GlyphAtlas errors
 
 ## Constraints
 
-- **API Change**: new_glyph_atlas will return `!GlyphAtlas` instead of `GlyphAtlas`
-- **V Language**: Must use V's error handling idioms (`!` return type, `or` blocks)
-- **Performance**: Null checks in hot paths should be minimal overhead
+- **API Change**: new_glyph_atlas returns `!GlyphAtlas` instead of `GlyphAtlas`
+- **V Language**: Uses V's error handling idioms (`!` return type, `or` blocks)
+- **Performance**: Null checks in hot paths minimal overhead
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Return errors vs panic | Graceful degradation in production | — Pending |
-| Debug-only validation | Runtime overhead acceptable only in debug | — Pending |
-| Document vs Arena | Arena adds complexity for string lifetime | — Pending |
+| Return errors vs panic | Graceful degradation in production | Good - errors propagate cleanly |
+| Debug-only validation | Runtime overhead acceptable only in debug | Good - catch issues in dev |
+| Clone strings vs Arena | Arena adds complexity for string lifetime | Good - simple clone/free pattern |
+| `or { panic(err) }` in renderer | Atlas failure unrecoverable at init | Good - matches existing examples |
+| 1GB max allocation limit | Reasonable bound for glyph atlas | Good - prevents runaway growth |
+| Silent errors in grow() | No log.error, just return error | Good - caller decides response |
 
 ---
-*Last updated: 2026-02-01 after initialization*
+*Last updated: 2026-02-01 after v1.0 milestone*
