@@ -10,10 +10,29 @@ pub mut:
 	char_rects         []CharRect
 	char_rect_by_index map[int]int // char byte index -> char_rects array index
 	lines              []Line
-	width              f32 // Logical Width
-	height             f32 // Logical Height
-	visual_width       f32 // Ink Width
-	visual_height      f32 // Ink Height
+	log_attrs          []LogAttr // Cursor/word boundary info (len = text.len + 1)
+	width              f32       // Logical Width
+	height             f32       // Logical Height
+	visual_width       f32       // Ink Width
+	visual_height      f32       // Ink Height
+}
+
+// CursorPosition represents the geometry for rendering a cursor at a byte index.
+pub struct CursorPosition {
+pub:
+	x      f32
+	y      f32
+	height f32
+}
+
+// LogAttr holds character classification for cursor/word boundaries.
+// Extracted from Pango's PangoLogAttr during layout build.
+pub struct LogAttr {
+pub:
+	is_cursor_position bool
+	is_word_start      bool
+	is_word_end        bool
+	is_line_break      bool
 }
 
 pub struct CharRect {
