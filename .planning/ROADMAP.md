@@ -35,6 +35,12 @@
 
 **Dependencies:** None
 
+**Plans:** 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — ProfileMetrics struct + timing instrumentation (INST-01, INST-02)
+- [ ] 08-02-PLAN.md — Cache/atlas tracking + API exposure (INST-03, INST-04, INST-05)
+
 **Requirements:**
 - INST-01: Profiling builds with `-d profile` flag have zero release overhead
 - INST-02: Frame time breakdown shows layout/rasterize/upload/draw phases
@@ -92,6 +98,6 @@
 | 5. Attribute List | v1.1 | 1/1 | Complete | 2026-02-02 |
 | 6. FreeType State | v1.1 | 1/1 | Complete | 2026-02-02 |
 | 7. Vertical Coords | v1.1 | 1/1 | Complete | 2026-02-02 |
-| 8. Instrumentation | v1.2 | 0/? | Pending | — |
+| 8. Instrumentation | v1.2 | 0/2 | Planned | — |
 | 9. Latency Optimizations | v1.2 | 0/? | Pending | — |
 | 10. Memory Optimization | v1.2 | 0/? | Pending | — |
