@@ -57,7 +57,11 @@ See: .planning/milestones/v1.2-ROADMAP.md for full details.
 4. Home/End keys move cursor to line start/end
 5. Cursor geometry API returns (x, y, height) for rendering vertical line
 
-**Plans:** 0/0
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Pango cursor bindings + CursorPosition geometry API
+- [ ] 11-02-PLAN.md — Cursor movement APIs + keyboard navigation demo
 
 ---
 
@@ -128,7 +132,7 @@ See: .planning/milestones/v1.2-ROADMAP.md for full details.
 1. User activates Japanese IME and types, composition text displays with underline
 2. User converts composition, committed text replaces preedit at cursor position
 3. IME candidate window appears near cursor (correct screen coordinates)
-4. User types dead key sequence (e.g., ` + e), accented character (è) appears
+4. User types dead key sequence (e.g., ` + e), accented character (e) appears
 
 **Plans:** 0/0
 
@@ -186,7 +190,7 @@ See: .planning/milestones/v1.2-ROADMAP.md for full details.
 | 8. Instrumentation | v1.2 | 2/2 | Complete | 2026-02-02 |
 | 9. Latency Optimizations | v1.2 | 3/3 | Complete | 2026-02-02 |
 | 10. Memory Optimization | v1.2 | 1/1 | Complete | 2026-02-02 |
-| 11. Cursor Foundation | v1.3 | 0/0 | Pending | — |
+| 11. Cursor Foundation | v1.3 | 0/2 | Planned | — |
 | 12. Selection | v1.3 | 0/0 | Pending | — |
 | 13. Text Mutation | v1.3 | 0/0 | Pending | — |
 | 14. Undo/Redo | v1.3 | 0/0 | Pending | — |
