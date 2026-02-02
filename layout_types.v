@@ -4,6 +4,7 @@ import gg
 
 pub struct Layout {
 pub mut:
+	cloned_object_ids  []string // Cloned inline object IDs for Pango lifetime
 	items              []Item
 	glyphs             []Glyph
 	char_rects         []CharRect
@@ -197,4 +198,15 @@ pub:
 	height f32
 	// line_gap is the recommended partial spacing between lines.
 	line_gap f32
+}
+
+// destroy frees resources owned by the Layout.
+// Call when Layout is no longer needed to prevent memory leaks.
+pub fn (mut l Layout) destroy() {
+	for s in l.cloned_object_ids {
+		if s.len > 0 {
+			unsafe { free(s.str) }
+		}
+	}
+	l.cloned_object_ids = []
 }
