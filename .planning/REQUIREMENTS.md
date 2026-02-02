@@ -65,24 +65,24 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ITER-01 | TBD | Pending |
-| ITER-02 | TBD | Pending |
-| ITER-03 | TBD | Pending |
-| ATTR-01 | TBD | Pending |
-| ATTR-02 | TBD | Pending |
-| ATTR-03 | TBD | Pending |
-| FT-01 | TBD | Pending |
-| FT-02 | TBD | Pending |
-| FT-03 | TBD | Pending |
-| VERT-01 | TBD | Pending |
-| VERT-02 | TBD | Pending |
-| VERT-03 | TBD | Pending |
+| ITER-01 | Phase 4 | Pending |
+| ITER-02 | Phase 4 | Pending |
+| ITER-03 | Phase 4 | Pending |
+| ATTR-01 | Phase 5 | Pending |
+| ATTR-02 | Phase 5 | Pending |
+| ATTR-03 | Phase 5 | Pending |
+| FT-01 | Phase 6 | Pending |
+| FT-02 | Phase 6 | Pending |
+| FT-03 | Phase 6 | Pending |
+| VERT-01 | Phase 7 | Pending |
+| VERT-02 | Phase 7 | Pending |
+| VERT-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 12 total
-- Mapped to phases: 0
-- Unmapped: 12 ⚠️
+- Mapped to phases: 12/12 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-02*
-*Last updated: 2026-02-02 after initial definition*
+*Last updated: 2026-02-02 after roadmap creation*

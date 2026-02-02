@@ -2,19 +2,19 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-02-01)
+See: .planning/PROJECT.md (updated 2026-02-02)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** Planning next milestone
+**Current focus:** v1.1 Fragile Area Hardening (Phase 4)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 4 of 7 (Layout Iteration)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-02-02 — Milestone v1.1 started
+Status: Ready to plan
+Last activity: 2026-02-02 — Roadmap created for v1.1
 
-Progress: Defining v1.1 requirements
+Progress: [███░░░░░░░] 3/7 phases (43%)
 
 ## Performance Metrics
 
@@ -37,6 +37,10 @@ Progress: Defining v1.1 requirements
 
 See PROJECT.md Key Decisions table for full history.
 
+Recent decisions affecting current work:
+- v1.0: Clone strings vs Arena — simple clone/free for inline object IDs
+- v1.0: Debug-only validation — catch issues in dev, minimal runtime overhead
+
 ### Pending Todos
 
 None.
@@ -47,6 +51,6 @@ Minor tech debt: Layout.destroy() not called in example code (documented in audi
 
 ## Session Continuity
 
-Last session: 2026-02-01
-Stopped at: v1.0 milestone complete
-Resume: Run `/gsd:new-milestone` to start next cycle
+Last session: 2026-02-02
+Stopped at: v1.1 roadmap created
+Resume: Run `/gsd:plan-phase 4` to begin Layout Iteration phase
