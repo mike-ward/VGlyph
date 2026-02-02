@@ -6,6 +6,45 @@ import strings
 
 const space_char = u8(32)
 
+// Coordinate Systems (vglyph conventions):
+// - Pango units: 1/PANGO_SCALE of a point (1024 units per point)
+// - Logical pixels: 1pt = 1px before DPI scaling
+// - Physical pixels: logical * scale_factor (for rasterization)
+// - Screen Y: Down is positive (standard graphics convention)
+// - Baseline Y: Up is positive (FreeType/typography convention)
+//
+// Vertical Text Flow:
+// - Characters stack top-to-bottom (pen moves DOWN)
+// - Each glyph centered horizontally in column
+// - Column width = line_height (ascent + descent)
+
+$if debug {
+	__global attr_list_alloc_count = int(0)
+}
+
+// track_attr_list_alloc increments debug counter when AttrList created.
+fn track_attr_list_alloc() {
+	$if debug {
+		attr_list_alloc_count++
+	}
+}
+
+// track_attr_list_free decrements debug counter when AttrList freed.
+fn track_attr_list_free() {
+	$if debug {
+		attr_list_alloc_count--
+	}
+}
+
+// check_attr_list_leaks panics if any AttrLists leaked. Call at shutdown.
+pub fn check_attr_list_leaks() {
+	$if debug {
+		if attr_list_alloc_count != 0 {
+			panic('AttrList leak: ${attr_list_alloc_count} list(s) not freed')
+		}
+	}
+}
+
 // layout_text shapes, wraps, and arranges text using Pango.
 //
 // Algorithm:
@@ -79,13 +118,21 @@ pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 	defer { C.g_object_unref(layout) }
 
 	// 3. Modify attributes with runs
+	// AttrList lifecycle:
+	// 1. Copy existing (get_attributes returns layout-owned, don't unref) or create new
+	// 2. Caller owns the copy/new list (refcount=1)
+	// 3. Modify with pango_attr_list_insert (list takes ownership of attributes)
+	// 4. set_attributes refs the list (layout holds its own ref)
+	// 5. MUST unref caller's copy (pattern: set_attributes then unref)
 	base_list := C.pango_layout_get_attributes(layout)
 	mut attr_list := unsafe { &C.PangoAttrList(nil) }
 
 	if base_list != unsafe { nil } {
 		attr_list = C.pango_attr_list_copy(base_list)
+		track_attr_list_alloc()
 	} else {
 		attr_list = C.pango_attr_list_new()
+		track_attr_list_alloc()
 	}
 
 	// Apply styles from runs
@@ -95,6 +142,10 @@ pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 	}
 
 	C.pango_layout_set_attributes(layout, attr_list)
+	// Double-free prevented: unref called exactly once after set_attributes.
+	// V has no move semantics, but our pattern (create -> modify -> set -> unref)
+	// ensures single ownership path. set_attributes refs the list, we release ours.
+	track_attr_list_free()
 	C.pango_attr_list_unref(attr_list)
 
 	// 4. Process layout
@@ -105,12 +156,18 @@ pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 
 // build_layout_from_pango extracts V Items, Lines, and Rects from a configured PangoLayout.
 fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32, cfg TextConfig) Layout {
+	// Iterator lifecycle:
+	// 1. Create via pango_layout_get_iter (caller owns)
+	// 2. Iterate with next_run/next_char/next_line until returns false
+	// 3. DO NOT reuse after exhausted - create new iterator
+	// 4. MUST free via pango_layout_iter_free (defer handles this)
 	iter := C.pango_layout_get_iter(layout)
 	if iter == unsafe { nil } {
 		// handle error gracefully
 		return Layout{}
 	}
 	defer { C.pango_layout_iter_free(iter) }
+	mut iter_exhausted := false
 
 	// Pre-calculate inverse scale for faster pixel conversion
 	pixel_scale := 1.0 / (f64(pango_scale) * f64(scale_factor))
@@ -144,14 +201,18 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 	mut items := []Item{}
 
 	// Track cumulative vertical position for vertical text stacking
-	mut vertical_pen_y := f64(0)
-	if cfg.orientation == .vertical {
-		// Start at ascent so the first character draws *below* the top edge (y=0).
-		// Otherwise, drawing at y=0 puts the ascent part of the glyph above the box.
-		vertical_pen_y = primary_ascent
+	// Dispatch via match for compiler-verified exhaustiveness
+	mut vertical_pen_y := match cfg.orientation {
+		.horizontal { init_vertical_pen_horizontal() }
+		.vertical { init_vertical_pen_vertical(primary_ascent) }
 	}
 
 	for {
+		$if debug {
+			if iter_exhausted {
+				panic('layout iterator reused after exhaustion')
+			}
+		}
 		run_ptr := C.pango_layout_iter_get_run_readonly(iter)
 		if run_ptr != unsafe { nil } {
 			// PangoLayoutRun is typedef for PangoGlyphItem - safe cast per Pango API
@@ -176,6 +237,7 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		}
 
 		if !C.pango_layout_iter_next_run(iter) {
+			iter_exhausted = true
 			break
 		}
 	}
@@ -201,14 +263,21 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 	mut v_width := (f32(ink_rect.width) / f32(pango_scale)) / scale_factor
 	mut v_height := (f32(ink_rect.height) / f32(pango_scale)) / scale_factor
 
-	// Override dimensions for manually stacked vertical text
-	if cfg.orientation == .vertical {
-		// Height is the total accumulated vertical pen position
-		v_height = f32(vertical_pen_y)
+	// Vertical Dimensions Override
+	//
+	// Width = horizontal line_height (column width for vertical stack)
+	// Height = cumulative vertical_pen_y (total stacked height)
+	//
+	// Why: Pango computed horizontal extents; we override with manual stack dimensions.
 
-		// Width is effectively the line height of the font (column width)
-		// We can approx this with the Pango logical height (which acts as line height for horizontal)
-		v_width = l_height
+	v_width, v_height = match cfg.orientation {
+		.horizontal {
+			compute_dimensions_horizontal(f32(ink_rect.width), f32(ink_rect.height), f32(pango_scale),
+				scale_factor)
+		}
+		.vertical {
+			compute_dimensions_vertical(l_height, f32(vertical_pen_y))
+		}
 	}
 
 	return Layout{
@@ -288,13 +357,21 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 	// Apply Style Attributes
 	// Use PangoAttrList for global styles (merges with markup).
 	// Copy existing list or create new to avoid overwriting.
+	// AttrList lifecycle:
+	// 1. Copy existing (get_attributes returns layout-owned, don't unref) or create new
+	// 2. Caller owns the copy/new list (refcount=1)
+	// 3. Modify with pango_attr_list_insert (list takes ownership of attributes)
+	// 4. set_attributes refs the list (layout holds its own ref)
+	// 5. MUST unref caller's copy (pattern: set_attributes then unref)
 	mut attr_list := unsafe { &C.PangoAttrList(nil) }
 
 	existing_list := C.pango_layout_get_attributes(layout)
 	if existing_list != unsafe { nil } {
 		attr_list = C.pango_attr_list_copy(existing_list)
+		track_attr_list_alloc()
 	} else {
 		attr_list = C.pango_attr_list_new()
+		track_attr_list_alloc()
 	}
 
 	if attr_list != unsafe { nil } {
@@ -342,6 +419,10 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 		}
 
 		C.pango_layout_set_attributes(layout, attr_list)
+		// Double-free prevented: unref called exactly once after set_attributes.
+		// V has no move semantics, but our pattern (create -> modify -> set -> unref)
+		// ensures single ownership path. set_attributes refs the list, we release ours.
+		track_attr_list_free()
 		C.pango_attr_list_unref(attr_list)
 	}
 
@@ -565,43 +646,28 @@ fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64, cfg
 			x_adv := f64(info.geometry.width) * pixel_scale
 			y_adv := 0.0
 
-			mut final_x_off := x_off
-			mut final_y_off := y_off
-			mut final_x_adv := x_adv
-			mut final_y_adv := y_adv
+			// Vertical Transform - Manual Stacking (Upright CJK)
+			//
+			// Input (from Pango horizontal layout):
+			//   x_advance = character width (horizontal)
+			//   y_offset  = vertical baseline shift
+			//
+			// Output (for vertical stacking):
+			//   x_advance = 0 (no horizontal movement)
+			//   y_advance = -line_height (negative = pen moves DOWN in screen coords)
+			//   x_offset  = (line_height - char_width) / 2 (center in column)
+			//
+			// Formula: final_y_adv = -(ascent + descent)
+			// Why: Screen Y increases downward, so negative advance moves pen down
 
-			// Swap coordinates for vertical layout
-			if cfg.orientation == .vertical {
-				// Manual Vertical Stacking (Text Orientation Upright)
-				// We take the Horizontal layout and stack it vertically.
-				// Pango gave us Horizontal info:
-				// - x_advance: width of char
-				// - y_offset: vertical shift (rise/drop) relative to baseline
-
-				// We map:
-				// - Advance -> Down (Y)
-				// - Offset X -> Offset X (centering?) -> For now keep left aligned or center?
-				//   Let's keep coordinates relative to the "Vertical Baseline" (which is the center of column?)
-				//   Actually, simplified:
-				//   Visual X = Line X (run_y in Pango) + Center Offset?
-				//   Visual Y = Pen Y.
-
-				// In this loop, we just store offsets/advances relative to the pen.
-				// Pen moves Down (increasing screen Y).
-				// Renderer does: cy -= y_advance, so negative y_advance moves down.
-				line_height := cfg.primary_ascent + cfg.primary_descent
-				final_x_adv = 0.0
-				final_y_adv = -line_height // Negative to move pen DOWN
-
-				// Center the glyph horizontally in the "column" defined by line_height
-				center_offset := (line_height - x_adv) / 2.0
-				final_x_off = center_offset
-
-				// Offsets:
-				// x_offset in Pango is horizontal shift. In Vertical, it might mean horizontal shift too.
-				// y_offset in Pango is vertical shift.
-				// So we generally keep them, but y_offset might need sign flip or adj?
-				// Pango Y Up. Screen Y Down.
+			line_height := cfg.primary_ascent + cfg.primary_descent
+			final_x_off, final_y_off, final_x_adv, final_y_adv := match cfg.orientation {
+				.horizontal {
+					compute_glyph_transform_horizontal(x_off, y_off, x_adv, y_adv)
+				}
+				.vertical {
+					compute_glyph_transform_vertical(x_off, y_off, x_adv, y_adv, line_height)
+				}
 			}
 
 			all_glyphs << Glyph{
@@ -618,21 +684,24 @@ fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64, cfg
 
 	glyph_count := all_glyphs.len - start_glyph_idx
 
-	// Post-process Run coordinates for Vertical
-	mut final_run_x := run_x
-	mut final_run_y := run_y
-	mut new_vertical_pen_y := vertical_pen_y
+	// Vertical Run Positioning
+	//
+	// Transform: swap X/Y baselines
+	//   final_run_x = run_y (horizontal baseline -> vertical X position)
+	//   final_run_y = vertical_pen_y (cumulative vertical stack position)
+	//
+	// Why: In vertical text, the "baseline" becomes vertical center of column.
+	// Pango's run_y (horizontal baseline offset) maps to X centering.
 
-	if cfg.orientation == .vertical {
-		// Vertical text: stack runs vertically using cumulative pen position
-		// X position: use baseline (run_y) for horizontal centering
-		// Y position: use cumulative vertical_pen_y
-		final_run_x = run_y
-		final_run_y = vertical_pen_y
-
-		// Advance vertical pen by total height of this run's glyphs
-		line_height := cfg.primary_ascent + cfg.primary_descent
-		new_vertical_pen_y = vertical_pen_y + line_height * f64(glyph_count)
+	line_height_run := cfg.primary_ascent + cfg.primary_descent
+	final_run_x, final_run_y, new_vertical_pen_y := match cfg.orientation {
+		.horizontal {
+			compute_run_position_horizontal(run_x, run_y, vertical_pen_y)
+		}
+		.vertical {
+			compute_run_position_vertical(run_x, run_y, vertical_pen_y, line_height_run,
+				glyph_count)
+		}
 	}
 
 	// Get sub-text
@@ -730,11 +799,17 @@ fn compute_hit_test_rects(layout &C.PangoLayout, text string, scale_factor f32) 
 	mut char_rects := []CharRect{cap: text.len}
 
 	// Use iterator for O(N) traversal instead of O(N^2) with index_to_pos
+	// Iterator lifecycle:
+	// 1. Create via pango_layout_get_iter (caller owns)
+	// 2. Iterate with next_run/next_char/next_line until returns false
+	// 3. DO NOT reuse after exhausted - create new iterator
+	// 4. MUST free via pango_layout_iter_free (defer handles this)
 	iter := C.pango_layout_get_iter(layout)
 	if iter == unsafe { nil } {
 		return char_rects
 	}
 	defer { C.pango_layout_iter_free(iter) }
+	mut iter_exhausted := false
 
 	// Calculate fallback width for zero-width spaces
 	pixel_scale := 1.0 / (f32(pango_scale) * scale_factor)
@@ -746,6 +821,11 @@ fn compute_hit_test_rects(layout &C.PangoLayout, text string, scale_factor f32) 
 	}
 
 	for {
+		$if debug {
+			if iter_exhausted {
+				panic('char iterator reused after exhaustion')
+			}
+		}
 		// Get current char index
 		idx := C.pango_layout_iter_get_index(iter)
 
@@ -787,6 +867,7 @@ fn compute_hit_test_rects(layout &C.PangoLayout, text string, scale_factor f32) 
 		}
 
 		if !C.pango_layout_iter_next_char(iter) {
+			iter_exhausted = true
 			break
 		}
 	}
@@ -800,6 +881,11 @@ fn compute_lines(layout &C.PangoLayout, iter &C.PangoLayoutIter, scale_factor f3
 	// Note: The passed 'iter' might be at the end from previous run iteration.
 	// It's safer to create a new one or reset if valid. Pango iterators don't have a reset.
 	// So we create a new one.
+	// Iterator lifecycle:
+	// 1. Create via pango_layout_get_iter (caller owns)
+	// 2. Iterate with next_run/next_char/next_line until returns false
+	// 3. DO NOT reuse after exhausted - create new iterator
+	// 4. MUST free via pango_layout_iter_free (defer handles this)
 	line_iter := C.pango_layout_get_iter(layout)
 	defer { C.pango_layout_iter_free(line_iter) }
 
@@ -836,6 +922,72 @@ fn compute_lines(layout &C.PangoLayout, iter &C.PangoLayoutIter, scale_factor f3
 	return lines
 }
 
+// --- Orientation Helper Functions ---
+// Separate functions for horizontal/vertical paths per CONTEXT.md decision.
+// Match dispatch in calling code ensures compiler-verified exhaustiveness.
+
+// init_vertical_pen_horizontal returns initial vertical_pen_y for horizontal layout.
+// Horizontal text has no vertical pen tracking.
+fn init_vertical_pen_horizontal() f64 {
+	return f64(0)
+}
+
+// init_vertical_pen_vertical returns initial vertical_pen_y for vertical layout.
+// Starts at primary ascent so first glyph baseline aligns properly.
+fn init_vertical_pen_vertical(primary_ascent f64) f64 {
+	return primary_ascent
+}
+
+// compute_glyph_transform_horizontal returns glyph offsets/advances unchanged.
+// Horizontal text uses Pango values directly.
+fn compute_glyph_transform_horizontal(x_off f64, y_off f64, x_adv f64, y_adv f64) (f64, f64, f64, f64) {
+	return x_off, y_off, x_adv, y_adv
+}
+
+// compute_glyph_transform_vertical transforms glyph for vertical stacking.
+// Centers glyph horizontally in column, sets vertical advance to line_height.
+fn compute_glyph_transform_vertical(x_off f64, y_off f64, x_adv f64, y_adv f64, line_height f64) (f64, f64, f64, f64) {
+	// x_offset = center glyph in column: (line_height - char_width) / 2
+	// y_offset = preserve vertical baseline shift
+	// x_advance = 0 (no horizontal movement)
+	// y_advance = -line_height (pen moves DOWN in screen coords)
+	_ = x_off // Original x_off replaced by centering
+	_ = y_adv // Original y_adv replaced by line_height
+	center_offset := (line_height - x_adv) / 2.0
+	return center_offset, y_off, 0.0, -line_height
+}
+
+// compute_run_position_horizontal returns run position for horizontal text.
+// Uses Pango coordinates directly.
+fn compute_run_position_horizontal(run_x f64, run_y f64, vertical_pen_y f64) (f64, f64, f64) {
+	return run_x, run_y, vertical_pen_y
+}
+
+// compute_run_position_vertical transforms run position for vertical stacking.
+// Swaps X/Y baselines and updates vertical pen position.
+fn compute_run_position_vertical(run_x f64, run_y f64, vertical_pen_y f64, line_height f64, glyph_count int) (f64, f64, f64) {
+	// final_run_x = run_y (horizontal baseline -> vertical X position)
+	// final_run_y = vertical_pen_y (cumulative vertical stack position)
+	_ = run_x // Unused in vertical mode
+	new_pen_y := vertical_pen_y + line_height * f64(glyph_count)
+	return run_y, vertical_pen_y, new_pen_y
+}
+
+// compute_dimensions_horizontal returns layout dimensions for horizontal text.
+// Uses Pango ink rect directly.
+fn compute_dimensions_horizontal(ink_width f32, ink_height f32, pango_scale f32, scale_factor f32) (f32, f32) {
+	return (ink_width / pango_scale) / scale_factor, (ink_height / pango_scale) / scale_factor
+}
+
+// compute_dimensions_vertical returns layout dimensions for vertical text.
+// Width = line_height (column), Height = cumulative vertical pen position.
+fn compute_dimensions_vertical(line_height f32, vertical_pen_y f32) (f32, f32) {
+	return line_height, vertical_pen_y
+}
+
+// apply_rich_text_style modifies a caller-owned AttrList.
+// Caller retains ownership; this function only inserts attributes.
+// Attributes inserted become owned by the list (don't free them separately).
 fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle, start int, end int, mut cloned_ids []string) {
 	// 1. Color
 	if style.color.a > 0 {

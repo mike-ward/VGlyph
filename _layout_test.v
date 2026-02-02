@@ -162,3 +162,63 @@ fn test_hit_test_rect() {
 		assert false, 'Should have missed'
 	}
 }
+
+// Test vertical layout dimensions
+fn test_vertical_layout_dimensions() {
+	mut ctx := new_context(1.0)!
+	defer { ctx.free() }
+
+	// Vertical layout should have width < height for stacked text
+	mut layout := ctx.layout_text('ABC', TextConfig{
+		style:       TextStyle{
+			font_name: 'Sans 12'
+		}
+		orientation: .vertical
+	})!
+	defer { layout.destroy() }
+
+	// For 3 chars stacked vertically:
+	// - visual_width ~ line_height (column width)
+	// - visual_height ~ 3 * line_height
+	assert layout.visual_height > layout.visual_width, 'vertical text should be taller than wide'
+	assert layout.visual_height > 0, 'vertical layout has height'
+	assert layout.visual_width > 0, 'vertical layout has width'
+}
+
+// Test horizontal layout dimensions (regression guard)
+fn test_horizontal_layout_dimensions() {
+	mut ctx := new_context(1.0)!
+	defer { ctx.free() }
+
+	mut layout := ctx.layout_text('ABC', TextConfig{
+		style:       TextStyle{
+			font_name: 'Sans 12'
+		}
+		orientation: .horizontal
+	})!
+	defer { layout.destroy() }
+
+	// Horizontal text should be wider than tall (single line)
+	assert layout.visual_width > layout.visual_height, 'horizontal text should be wider than tall'
+}
+
+// Test vertical glyph advances
+fn test_vertical_glyph_advances() {
+	mut ctx := new_context(1.0)!
+	defer { ctx.free() }
+
+	mut layout := ctx.layout_text('AB', TextConfig{
+		style:       TextStyle{
+			font_name: 'Sans 12'
+		}
+		orientation: .vertical
+	})!
+	defer { layout.destroy() }
+
+	// Vertical glyphs should have y_advance (not x_advance)
+	if layout.glyphs.len >= 2 {
+		glyph := layout.glyphs[0]
+		assert glyph.x_advance == 0, 'vertical glyph has no x_advance'
+		assert glyph.y_advance != 0, 'vertical glyph has y_advance'
+	}
+}

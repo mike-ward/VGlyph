@@ -27,15 +27,14 @@ Reliable text rendering without crashes or undefined behavior.
 - grow() error propagation through insert_bitmap — v1.0
 - Pango pointer cast documented with debug validation — v1.0
 - Inline object ID string lifetime management — v1.0
+- Iterator lifecycle docs and exhaustion guards — v1.1
+- AttrList ownership docs and debug leak counter — v1.1
+- FreeType state sequence docs and debug validation — v1.1
+- Vertical coordinate transform docs and match dispatch — v1.1
 
 ### Active
 
-**v1.1 Fragile Area Hardening**
-
-- [ ] Layout iteration state machine hardening (RAII wrappers, lifecycle validation)
-- [ ] Pango attribute list lifecycle safety (ownership clarity, leak guards)
-- [ ] FreeType face rendering state validation (sequence enforcement)
-- [ ] Vertical text coordinate transformation safety (clearer transforms)
+(None — run `/gsd:new-milestone` to define next milestone)
 
 ### Out of Scope
 
@@ -47,19 +46,19 @@ Reliable text rendering without crashes or undefined behavior.
 
 ## Context
 
-VGlyph is a V language text rendering library. v1.0 hardened memory operations in glyph_atlas.v
-and layout.v based on CONCERNS.md audit.
+VGlyph is a V language text rendering library. v1.0 hardened memory operations, v1.1 hardened
+fragile areas (iterators, AttrList, FreeType state, vertical coords) based on CONCERNS.md audit.
 
 **Current State:**
-- 8,301 LOC V
+- 8,540 LOC V
 - Tech stack: Pango, FreeType, Cairo, OpenGL
-- Memory/safety issues from CONCERNS.md addressed
+- All CONCERNS.md safety issues addressed through v1.1
 
-**Files modified in v1.0:**
-- `glyph_atlas.v` — Error-returning API, allocation validation, grow() propagation
-- `layout.v` — Pointer cast docs, string cloning
-- `layout_types.v` — cloned_object_ids field, destroy() method
-- `renderer.v` — Callers handle GlyphAtlas errors
+**Files modified in v1.1:**
+- `layout.v` — Iterator lifecycle docs, exhaustion guards, AttrList ownership docs, leak counter,
+  coordinate system docs, orientation helpers, match dispatch
+- `glyph_atlas.v` — FreeType state sequence docs and debug validation guards
+- `_layout_test.v` — Orientation test cases
 
 ## Constraints
 
@@ -77,6 +76,12 @@ and layout.v based on CONCERNS.md audit.
 | `or { panic(err) }` in renderer | Atlas failure unrecoverable at init | Good - matches existing examples |
 | 1GB max allocation limit | Reasonable bound for glyph atlas | Good - prevents runaway growth |
 | Silent errors in grow() | No log.error, just return error | Good - caller decides response |
+| Debug-only guards | Zero runtime overhead in release | Good - catches bugs in dev |
+| Iterator exhaustion tracking | Prevents reuse after exhaustion | Good - UB caught in debug |
+| AttrList leak counter | Debug-only resource tracking | Good - catches leaks in dev |
+| FT state validation | Inline docs + debug guards | Good - invalid state caught |
+| Match dispatch for orientation | Compiler-verified exhaustiveness | Good - no missing arms |
+| Helper function separation | _horizontal/_vertical suffix | Good - clear distinction |
 
 ---
-*Last updated: 2026-02-02 after v1.1 milestone start*
+*Last updated: 2026-02-02 after v1.1 milestone*

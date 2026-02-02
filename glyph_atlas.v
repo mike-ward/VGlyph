@@ -145,6 +145,9 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 		flags |= C.FT_LOAD_NO_BITMAP
 	}
 
+	// State: load_glyph entry
+	// Requires: valid face (from Pango), valid glyph index
+	// Produces: glyph slot populated with outline or bitmap
 	if C.FT_Load_Glyph(cfg.face, cfg.index, flags) != 0 {
 		if cfg.index != 0xfffffff {
 			log.error('${@FILE_LINE}: FT_Load_Glyph failed 0x${cfg.index:x}')
@@ -173,6 +176,14 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 		// bin 0..3 corresponds to 0, 0.25, 0.5, 0.75 pixels.
 		shift := i64(cfg.subpixel_bin * ft_subpixel_unit)
 
+		// State: outline loaded (NO_BITMAP flag used, no FT_LOAD_RENDER)
+		// Requires: glyph.outline valid with n_points > 0
+		// Produces: outline shifted by subpixel amount
+		$if debug {
+			if glyph.outline.n_points == 0 {
+				panic('FT_Outline_Translate requires loaded outline, got empty. Check FT_Load_Glyph flags.')
+			}
+		}
 		C.FT_Outline_Translate(&glyph.outline, shift, 0)
 
 		// Now Render
@@ -183,11 +194,27 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 		}
 		// We use the integer values directly or we should add them to c_bindings.v
 
+		// State: outline loaded and translated
+		// Requires: glyph slot contains outline data
+		// Produces: glyph.bitmap populated
+		$if debug {
+			if glyph == unsafe { nil } {
+				panic('FT_Render_Glyph requires glyph slot. FT_Load_Glyph must succeed first.')
+			}
+		}
 		if C.FT_Render_Glyph(glyph, render_mode) != 0 {
-			// If rendering failed (e.g. maybe it wasn't an outline?), try reloading with default render
+			// Fallback path: FT_Render_Glyph failed
+			// This occurs for bitmap fonts where FT_LOAD_NO_BITMAP still loads bitmap data
+			// but outline.n_points == 0, making render fail.
+			//
+			// Valid state sequence: reload with FT_LOAD_RENDER
+			// - Resets glyph slot to fresh state
+			// - Produces bitmap directly (no translate/render step needed)
+			// - Same validity requirements as normal load: face + index valid
 			if C.FT_Load_Glyph(cfg.face, cfg.index, C.FT_LOAD_RENDER | C.FT_LOAD_COLOR | target_flag) != 0 {
 				return error('FT_Render_Glyph failed and fallback load failed')
 			}
+			// glyph now has bitmap directly via FT_LOAD_RENDER
 		}
 	}
 
