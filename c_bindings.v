@@ -657,21 +657,27 @@ fn C.FcConfigAppFontAddDir(config &C.FcConfig, dir &char) C.FcBool
 fn C.pango_fc_font_map_config_changed(voidptr)
 
 // Pango LogAttr - Character classification for cursor positioning
-// The actual struct is a bitfield packed as u32
+// C struct uses bitfields, V accesses them as u32 members (guint = u32)
 @[typedef]
 pub struct C.PangoLogAttr {
 pub:
-	flags u32 // Bitfields packed - use constants to extract
+	is_line_break               u32
+	is_mandatory_break          u32
+	is_char_break               u32
+	is_white                    u32
+	is_cursor_position          u32
+	is_word_start               u32
+	is_word_end                 u32
+	is_sentence_boundary        u32
+	is_sentence_start           u32
+	is_sentence_end             u32
+	backspace_deletes_character u32
+	is_expandable_space         u32
+	is_word_boundary            u32
+	break_inserts_hyphen        u32
+	break_removes_preceding     u32
+	reserved                    u32
 }
-
-// Bit flag constants for LogAttr extraction
-pub const pango_log_attr_is_line_break = 0x01 // bit 0
-pub const pango_log_attr_is_mandatory_break = 0x02 // bit 1
-pub const pango_log_attr_is_char_break = 0x04 // bit 2
-pub const pango_log_attr_is_white = 0x08 // bit 3
-pub const pango_log_attr_is_cursor_position = 0x10 // bit 4
-pub const pango_log_attr_is_word_start = 0x20 // bit 5
-pub const pango_log_attr_is_word_end = 0x40 // bit 6
 
 // Pango Cursor Functions
 fn C.pango_layout_get_cursor_pos(&C.PangoLayout, int, &C.PangoRectangle, &C.PangoRectangle)

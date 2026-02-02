@@ -293,17 +293,43 @@ fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
 		}
 	}
 
+	// Extract LogAttr data while PangoLayout is still valid
+	log_attrs := extract_log_attrs(layout, text.len)
+
 	return Layout{
 		items:              items
 		glyphs:             all_glyphs
 		char_rects:         char_rects
 		char_rect_by_index: char_rect_by_index
 		lines:              lines
+		log_attrs:          log_attrs
 		width:              l_width
 		height:             l_height
 		visual_width:       v_width
 		visual_height:      v_height
 	}
+}
+
+// extract_log_attrs extracts cursor/word boundary information from PangoLayout.
+// Returns array with len = text.len + 1 (position before each char + end position).
+fn extract_log_attrs(layout &C.PangoLayout, text_len int) []LogAttr {
+	mut n_attrs := int(0)
+	attrs_ptr := C.pango_layout_get_log_attrs_readonly(layout, &n_attrs)
+	if attrs_ptr == unsafe { nil } || n_attrs == 0 {
+		return []LogAttr{}
+	}
+
+	mut attrs := []LogAttr{cap: n_attrs}
+	for i in 0 .. n_attrs {
+		pango_attr := unsafe { attrs_ptr[i] }
+		attrs << LogAttr{
+			is_cursor_position: pango_attr.is_cursor_position != 0
+			is_word_start:      pango_attr.is_word_start != 0
+			is_word_end:        pango_attr.is_word_end != 0
+			is_line_break:      pango_attr.is_line_break != 0
+		}
+	}
+	return attrs
 }
 
 // Helper functions
