@@ -69,10 +69,10 @@ See: .planning/milestones/v1.3-ROADMAP.md for full details.
   3. Overlay becomes first responder when text field gains focus
   4. First responder returns to MTKView when text field loses focus
   5. Non-Darwin builds compile with stub implementation
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 18-01: TBD
+- [ ] 18-01-PLAN.md — VGlyphIMEOverlayView class, factory API, focus management, non-Darwin stubs
 
 #### Phase 19: NSTextInputClient Protocol + Japanese/Chinese
 **Goal**: IME events flow from overlay to CompositionState, Japanese and Chinese input works
@@ -138,10 +138,10 @@ Plans:
 | 15. IME Integration | v1.3 | 3/3 | Partial | 2026-02-03 |
 | 16. API & Demo | v1.3 | 2/2 | Complete | 2026-02-03 |
 | 17. Accessibility | v1.3 | 2/2 | Complete | 2026-02-03 |
-| 18. Overlay Infrastructure | v1.4 | 0/? | Not started | - |
+| 18. Overlay Infrastructure | v1.4 | 0/1 | Not started | - |
 | 19. NSTextInputClient + JP/CH | v1.4 | 0/? | Not started | - |
 | 20. Korean + Keyboard | v1.4 | 0/? | Not started | - |
 | 21. Multi-Display & Polish | v1.4 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-02-03 after v1.4 roadmap created*
+*Last updated: 2026-02-03 after Phase 18 planning*
