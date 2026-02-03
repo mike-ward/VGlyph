@@ -2,6 +2,7 @@
 #define VGLYPH_OBJC_HELPERS_H
 
 #include <Foundation/Foundation.h>
+#include <AppKit/AppKit.h>
 #include <objc/message.h>
 #include <objc/runtime.h>
 
@@ -55,6 +56,30 @@ static inline void v_msgSend_void_id(V_ID obj, V_SEL sel, V_ID arg1) {
 
 static inline V_ID v_msgSend_array(V_ID obj, V_SEL sel, V_ID arr) {
   return ((FN_MSG_SEND)objc_msgSend)(obj, sel, arr);
+}
+
+// Wrapper for NSAccessibilityPostNotification to handle ARC bridging
+static inline void v_NSAccessibilityPostNotification(V_ID element, V_ID notification) {
+  NSAccessibilityPostNotification((__bridge id)element, (__bridge id)notification);
+}
+
+// Wrapper for VoiceOver announcements
+// Posts NSAccessibilityAnnouncementRequestedNotification with the given message
+static inline void v_NSAccessibilityAnnounce(const char *message) {
+  if (message == NULL || message[0] == '\0') return;
+
+  NSString *announcement = [NSString stringWithUTF8String:message];
+  NSDictionary *userInfo = @{
+    NSAccessibilityAnnouncementKey: announcement,
+    NSAccessibilityPriorityKey: @(NSAccessibilityPriorityHigh)
+  };
+
+  // Post to the shared application (nil element = app-level announcement)
+  NSAccessibilityPostNotificationWithUserInfo(
+    [NSApplication sharedApplication],
+    NSAccessibilityAnnouncementRequestedNotification,
+    userInfo
+  );
 }
 
 #ifdef __cplusplus

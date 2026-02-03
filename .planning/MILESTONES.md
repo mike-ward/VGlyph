@@ -1,5 +1,37 @@
 # Project Milestones: VGlyph
 
+## v1.3 Text Editing (Shipped: 2026-02-03)
+
+**Delivered:** Text editing with cursor, selection, mutation, undo/redo, dead key IME, and VoiceOver
+accessibility for VGlyph's layout engine.
+
+**Phases completed:** 11-17 (15 plans total)
+
+**Key accomplishments:**
+
+- Click-to-position cursor with grapheme cluster support (emoji as single units)
+- Selection (click-drag, shift+arrow, double/triple-click word/paragraph)
+- Text mutation (insert/delete/backspace with modifiers, clipboard cut/copy/paste)
+- Undo/redo with 1s coalescing and 100-entry history limit
+- Dead key composition for accented characters (grave, acute, circumflex, tilde, umlaut)
+- VoiceOver accessibility announcements for navigation, selection, and editing
+
+**Stats:**
+
+- 61 files modified
+- 12,035 lines of V (+12,234 additions)
+- 7 phases, 15 plans
+- 39 days execution (2025-12-26 → 2026-02-03)
+
+**Git range:** `feat(11-01)` → `docs(17)`
+
+**Tech debt:** CJK IME blocked by sokol architecture (dead keys work, full NSTextInputClient requires
+sokol modification)
+
+**What's next:** TBD (run `/gsd:new-milestone`)
+
+---
+
 ## v1.2 Performance Optimization (Shipped: 2026-02-02)
 
 **Delivered:** Performance instrumentation, latency optimizations, and memory management for VGlyph's

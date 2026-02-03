@@ -7,6 +7,12 @@ module vglyph
 #pkgconfig fribidi
 #pkgconfig fontconfig
 
+// macOS IME bridge (Objective-C)
+#flag darwin -fobjc-arc
+#flag darwin -framework Cocoa
+#flag darwin @VMODROOT/ime_bridge_macos.m
+#include "@VMODROOT/ime_bridge_macos.h"
+
 // FreeType
 #include "ft_compat.h"
 
@@ -683,3 +689,36 @@ pub:
 fn C.pango_layout_get_cursor_pos(&C.PangoLayout, int, &C.PangoRectangle, &C.PangoRectangle)
 fn C.pango_layout_move_cursor_visually(&C.PangoLayout, bool, int, int, int, &int, &int)
 fn C.pango_layout_get_log_attrs_readonly(&C.PangoLayout, &int) &C.PangoLogAttr
+
+// IME Bridge Callbacks
+// These callbacks are called by the native macOS IME bridge (ime_bridge_macos.m)
+// to forward NSTextInputClient events to V code.
+
+// IMEMarkedTextCallback is called when IME updates preedit text.
+// text: preedit text (UTF-8 C string)
+// cursor_pos: byte offset within preedit where cursor should appear
+// user_data: opaque pointer to V app state
+type IMEMarkedTextCallback = fn (text &char, cursor_pos int, user_data voidptr)
+
+// IMEInsertTextCallback is called when IME commits final text.
+// text: final text to insert (UTF-8 C string)
+// user_data: opaque pointer to V app state
+type IMEInsertTextCallback = fn (text &char, user_data voidptr)
+
+// IMEUnmarkTextCallback is called when IME cancels composition.
+// user_data: opaque pointer to V app state
+type IMEUnmarkTextCallback = fn (user_data voidptr)
+
+// IMEBoundsCallback returns composition bounds for candidate window.
+// user_data: opaque pointer to V app state
+// Returns: x, y, width, height in screen coordinates (macOS origin is bottom-left)
+type IMEBoundsCallback = fn (user_data voidptr, x &f32, y &f32, width &f32, height &f32) bool
+
+// C functions implemented by ime_bridge_macos.m
+fn C.vglyph_ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback, unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr)
+
+// ime_register_callbacks wraps the C function for use from other modules.
+// Registers callbacks that the native IME bridge will call when IME events occur.
+pub fn ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback, unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr) {
+	C.vglyph_ime_register_callbacks(marked, insert, unmark, bounds, user_data)
+}

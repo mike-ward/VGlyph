@@ -14,6 +14,7 @@ fn get_role_string(role AccessibilityRole) Id {
 	match role {
 		.text { return ns_string('AXStaticText') }
 		.container { return ns_string('AXGroup') }
+		.text_field { return ns_string('AXTextField') }
 		else { return ns_string('AXUnknown') }
 	}
 }
@@ -122,12 +123,36 @@ fn (mut b DarwinAccessibilityBackend) create_element(role AccessibilityRole) Id 
 		role_sel := sel_register_name('setAccessibilityRole:')
 		C.v_msgSend_void_id(obj, role_sel, role_val)
 
+		// Enable accessibility for text fields
+		if role == .text_field {
+			enabled_sel := sel_register_name('setAccessibilityEnabled:')
+			C.v_msgSend(obj, enabled_sel, voidptr(1))
+		}
+
 		return obj
 	}
 }
 
 fn (mut b DarwinAccessibilityBackend) set_focus(node_id int) {
 	// TODO
+}
+
+fn (mut b DarwinAccessibilityBackend) post_notification(node_id int, notification AccessibilityNotification) {
+	// TODO: NSAccessibility notifications require element attached to window
+	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
+	// Full NSAccessibility integration deferred to future work
+	_ = node_id
+	_ = notification
+}
+
+fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value string, selected_range Range, cursor_line int) {
+	// TODO: NSAccessibility element integration requires window attachment
+	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
+	// Full NSAccessibility integration deferred to future work
+	_ = node_id
+	_ = value
+	_ = selected_range
+	_ = cursor_line
 }
 
 // Helpers

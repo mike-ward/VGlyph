@@ -10,6 +10,12 @@ mut:
 
 	// set_focus notifies the backend that a specific node has received focus.
 	set_focus(node_id int)
+
+	// post_notification posts an accessibility notification for a specific node.
+	post_notification(node_id int, notification AccessibilityNotification)
+
+	// update_text_field updates text field attributes (for VoiceOver text tracking).
+	update_text_field(node_id int, value string, selected_range Range, cursor_line int)
 }
 
 // new_accessibility_backend creates a platform-specific backend instance.

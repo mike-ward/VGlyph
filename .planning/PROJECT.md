@@ -4,7 +4,8 @@
 
 Text rendering library for V language using Pango for shaping and FreeType for rasterization.
 Atlas-based GPU rendering with layout caching, subpixel positioning, and rich text support.
-Includes profiling instrumentation, multi-page atlas, and LRU cache eviction.
+Includes profiling instrumentation, multi-page atlas, LRU cache eviction, and text editing APIs
+(cursor, selection, mutation, undo/redo, dead key IME, VoiceOver accessibility).
 
 ## Core Value
 
@@ -42,19 +43,22 @@ Reliable text rendering without crashes or undefined behavior.
 - Glyph cache collision detection (secondary key) — v1.2
 - GPU emoji scaling (destination rect, no CPU bicubic) — v1.2
 - Glyph cache LRU eviction (4096 default, configurable) — v1.2
+- Cursor position → rect API (click to geometry) — v1.3
+- Selection → rects API (highlight geometry) — v1.3
+- Grapheme cluster cursor navigation (emoji as single units) — v1.3
+- Text mutation (insert, delete, backspace, clipboard) — v1.3
+- Undo/redo with coalescing (1s timeout, 100 history) — v1.3
+- Dead key composition (grave, acute, circumflex, tilde, umlaut) — v1.3
+- VoiceOver accessibility announcements — v1.3
 
 ### Active
 
-**v1.3 Text Editing:**
-- Cursor position → rect API (given text position, return geometry)
-- Selection → rects API (given start/end, return highlight rects)
-- Text mutation (insert, delete, replace at cursor position)
-- IME support (macOS NSTextInputClient, composition window)
-- v-gui integration (TextField, TextArea widgets)
-- Demo with working editor
+**v1.4 (TBD):**
+- TBD (run `/gsd:new-milestone` to define next milestone)
 
 ### Out of Scope
 
+- CJK IME (NSTextInputClient) — blocked by sokol architecture, future enhancement
 - Shelf packing allocator — future optimization
 - Async texture updates — future optimization
 - Shape plan caching — future optimization
@@ -62,35 +66,19 @@ Reliable text rendering without crashes or undefined behavior.
 - SDF rendering — quality feature, not performance
 - Pre-rendered atlases — app size bloat
 
-## Current Milestone: v1.3 Text Editing
-
-**Goal:** Enable text editing with cursor, selection, mutation, and IME — integrated into v-gui.
-
-**Target features:**
-- Cursor positioning and geometry API
-- Selection highlighting (character/word/line)
-- Text mutation at cursor position
-- IME composition (macOS primary)
-- v-gui TextField/TextArea widgets
-- Working demo
-
-**Responsibility boundary:**
-- VGlyph: cursor geometry, selection rects, text mutation, IME, hit testing
-- v-gui: blink timer, keyboard events, focus, rendering
-
 ## Context
 
 VGlyph is a V language text rendering library. v1.0 hardened memory operations, v1.1 hardened
 fragile areas (iterators, AttrList, FreeType state, vertical coords), v1.2 added performance
-instrumentation and optimizations. v1.3 adds text editing capabilities.
+instrumentation and optimizations. v1.3 added text editing APIs.
 
 **Current State:**
-- 5,309 LOC V
+- 12,035 LOC V
 - Tech stack: Pango, FreeType, Cairo, OpenGL
 - Profiling: `-d profile` flag for timing/cache/atlas metrics
 - Atlas: Multi-page (4 max), LRU page eviction
 - Caches: Glyph cache (4096 LRU), Metrics cache (256 LRU), Layout cache (TTL)
-- Hit testing and character rect queries already exist (foundation for editing)
+- Editing: Cursor, selection, mutation, undo/redo, dead key IME, VoiceOver accessibility
 
 ## Constraints
 
@@ -120,6 +108,13 @@ instrumentation and optimizations. v1.3 adds text editing capabilities.
 | Panic on collision in debug | Bugs should be loud | Good - catches hash issues |
 | O(n) LRU scan | Simple, sufficient for 4096 entries | Good - no complex data structure |
 | GPU emoji scaling | Eliminates CPU bicubic overhead | Good - fast and good quality |
+| Byte-to-logattr mapping | Pango log_attrs indexed by char, not byte | Good - UTF-8/emoji correct |
+| Anchor-focus selection | Standard editor model | Good - intuitive behavior |
+| Pure function mutation | Return MutationResult, app applies | Good - testable, predictable |
+| 1s coalescing timeout | Split between Emacs 500ms, Docs 2s | Good - natural undo boundaries |
+| NSView category for IME | Add methods to sokol's view | Blocked - MTKView not affected |
+| Announcer over full tree | VoiceOver announcements work | Good - simpler implementation |
+| 150ms announcement debounce | Screen reader research | Good - prevents spam |
 
 ---
-*Last updated: 2026-02-02 after v1.3 milestone started*
+*Last updated: 2026-02-03 after v1.3 milestone shipped*

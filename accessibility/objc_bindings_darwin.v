@@ -66,6 +66,13 @@ pub mut:
 	size   C.CGSize
 }
 
+@[typedef]
+pub struct C.NSRange {
+pub mut:
+	location u64
+	length   u64
+}
+
 pub fn make_ns_rect(x f32, y f32, w f32, h f32) C.NSRect {
 	return C.NSRect{
 		origin: C.CGPoint{
@@ -96,4 +103,33 @@ pub fn ns_mutable_array_new() Id {
 
 pub fn ns_array_add_object(arr Id, obj Id) {
 	C.v_msgSend(arr, C.v_sel_registerName(c'addObject:'), obj)
+}
+
+// NSRange Helper
+pub fn make_ns_range(location int, length int) C.NSRange {
+	return C.NSRange{
+		location: u64(location)
+		length:   u64(length)
+	}
+}
+
+// NSAccessibility Notification Functions (uses wrapper for ARC bridging)
+fn C.v_NSAccessibilityPostNotification(element Id, notification Id)
+fn C.v_NSAccessibilityAnnounce(message &char)
+
+pub fn post_accessibility_notification(element Id, notification string) {
+	notif_ns := ns_string(notification)
+	C.v_NSAccessibilityPostNotification(element, notif_ns)
+}
+
+// announce_to_voiceover posts an announcement to VoiceOver.
+// This uses NSAccessibilityAnnouncementRequestedNotification for direct announcements.
+// On non-darwin platforms, this is a no-op.
+pub fn announce_to_voiceover(message string) {
+	$if darwin {
+		if message.len == 0 {
+			return
+		}
+		C.v_NSAccessibilityAnnounce(message.str)
+	}
 }

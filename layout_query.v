@@ -15,7 +15,8 @@ pub fn (l Layout) hit_test_rect(x f32, y f32) ?gg.Rect {
 	return none
 }
 
-// get_char_rect returns the bounding box for a specific character byte index.
+// get_char_rect returns the bounding box for a character at byte index.
+// Returns none if index is not a valid character position or out of bounds.
 pub fn (l Layout) get_char_rect(index int) ?gg.Rect {
 	rect_idx := l.char_rect_by_index[index] or { return none }
 	return l.char_rects[rect_idx].rect
@@ -92,15 +93,21 @@ pub fn (l Layout) get_closest_offset(x f32, y f32) int {
 		}
 	}
 
-	// If x is past the last character, check if line_end is closer
+	// If x is past the last character on the line, return line_end
 	if found_any {
-		// Get the last char's right edge
-		last_rect_idx := l.char_rect_by_index[closest_char_idx] or { return closest_char_idx }
-		last_cr := l.char_rects[last_rect_idx]
-		right_edge := last_cr.rect.x + last_cr.rect.width
+		// Find the actual last character on this line (rightmost)
+		mut last_char_right := f32(-1e9)
+		for i in target_line.start_index .. line_end {
+			rect_idx := l.char_rect_by_index[i] or { continue }
+			cr := l.char_rects[rect_idx]
+			char_right := cr.rect.x + cr.rect.width
+			if char_right > last_char_right {
+				last_char_right = char_right
+			}
+		}
 
-		// If click is past the right edge and there's a valid end position
-		if x > right_edge {
+		// If click is past the rightmost character's edge
+		if last_char_right > 0 && x > last_char_right {
 			// Check if line_end is a valid cursor position
 			if _ := l.log_attr_by_index[line_end] {
 				return line_end
@@ -275,7 +282,7 @@ fn (l Layout) get_log_attr(byte_index int) ?LogAttr {
 }
 
 // get_valid_cursor_positions returns sorted list of byte indices that are valid cursor positions.
-fn (l Layout) get_valid_cursor_positions() []int {
+pub fn (l Layout) get_valid_cursor_positions() []int {
 	mut positions := []int{cap: l.log_attr_by_index.len}
 	for byte_idx, attr_idx in l.log_attr_by_index {
 		if attr_idx >= 0 && attr_idx < l.log_attrs.len {
@@ -469,6 +476,141 @@ pub fn (l Layout) move_cursor_down(byte_index int, preferred_x f32) int {
 	// Find closest char on next line
 	next_line := l.lines[current_line_idx + 1]
 	return l.find_closest_index_in_line(next_line, target_x)
+}
+
+// get_word_at_index returns (start, end) byte indices for word containing index.
+// Uses Pango word boundaries. Returns (index, index) if not in a word.
+pub fn (l Layout) get_word_at_index(byte_index int) (int, int) {
+	if l.log_attrs.len == 0 {
+		return byte_index, byte_index
+	}
+
+	// Get all word starts and ends
+	word_starts := l.get_word_starts()
+	word_ends := l.get_word_ends()
+
+	// Find word start: largest word_start <= byte_index
+	mut start := byte_index
+	for i := word_starts.len - 1; i >= 0; i-- {
+		if word_starts[i] <= byte_index {
+			start = word_starts[i]
+			break
+		}
+	}
+
+	// Find word end: smallest word_end >= byte_index
+	mut end := byte_index
+	for we in word_ends {
+		if we >= byte_index {
+			end = we
+			break
+		}
+	}
+
+	// If start > end (click on whitespace), snap to nearest word
+	if start > end {
+		// Find closest boundary
+		mut nearest_start := -1
+		mut nearest_end := -1
+
+		// Find nearest word start after byte_index
+		for ws in word_starts {
+			if ws > byte_index {
+				nearest_start = ws
+				break
+			}
+		}
+
+		// Find nearest word end before byte_index
+		for i := word_ends.len - 1; i >= 0; i-- {
+			if word_ends[i] < byte_index {
+				nearest_end = word_ends[i]
+				break
+			}
+		}
+
+		// Pick the closer one
+		dist_to_start := if nearest_start >= 0 { nearest_start - byte_index } else { 1000000 }
+		dist_to_end := if nearest_end >= 0 { byte_index - nearest_end } else { 1000000 }
+
+		if dist_to_start < dist_to_end && nearest_start >= 0 {
+			// Snap to next word
+			start = nearest_start
+			for we in word_ends {
+				if we >= start {
+					end = we
+					break
+				}
+			}
+		} else if nearest_end >= 0 {
+			// Snap to previous word
+			end = nearest_end
+			for i := word_starts.len - 1; i >= 0; i-- {
+				if word_starts[i] <= end {
+					start = word_starts[i]
+					break
+				}
+			}
+		}
+	}
+
+	// Ensure valid range
+	if start > end {
+		return byte_index, byte_index
+	}
+	return start, end
+}
+
+// get_word_ends returns sorted list of byte indices that are word ends.
+fn (l Layout) get_word_ends() []int {
+	mut ends := []int{cap: l.log_attr_by_index.len}
+	for byte_idx, attr_idx in l.log_attr_by_index {
+		if attr_idx >= 0 && attr_idx < l.log_attrs.len {
+			if l.log_attrs[attr_idx].is_word_end {
+				ends << byte_idx
+			}
+		}
+	}
+	ends.sort()
+	return ends
+}
+
+// get_paragraph_at_index returns (start, end) byte indices for paragraph containing index.
+// Paragraph = text between empty lines (consecutive newlines \n\n).
+// Returns (0, text_len) if no empty lines found.
+pub fn (l Layout) get_paragraph_at_index(byte_index int, text string) (int, int) {
+	if text.len == 0 {
+		return 0, 0
+	}
+
+	// Clamp byte_index
+	idx := if byte_index < 0 {
+		0
+	} else if byte_index > text.len {
+		text.len
+	} else {
+		byte_index
+	}
+
+	// Scan backwards for paragraph start (after \n\n or beginning)
+	mut para_start := 0
+	for i := idx - 1; i >= 1; i-- {
+		if text[i] == `\n` && text[i - 1] == `\n` {
+			para_start = i + 1
+			break
+		}
+	}
+
+	// Scan forwards for paragraph end (before \n\n or text end)
+	mut para_end := text.len
+	for i in idx .. text.len - 1 {
+		if text[i] == `\n` && text[i + 1] == `\n` {
+			para_end = i
+			break
+		}
+	}
+
+	return para_start, para_end
 }
 
 // find_closest_index_in_line returns the byte index closest to target_x within the given line.

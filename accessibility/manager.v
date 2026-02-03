@@ -45,6 +45,37 @@ pub fn (mut am AccessibilityManager) add_text_node(text string, rect gg.Rect) {
 	am.nodes[am.root_id] = parent_node
 }
 
+// create_text_field_node creates a text field accessibility node.
+pub fn (mut am AccessibilityManager) create_text_field_node(rect gg.Rect) int {
+	// Ensure root exists
+	if am.nodes.len == 0 {
+		am.reset()
+	}
+	id := am.next_node_id()
+	node := AccessibilityNode{
+		id:     id
+		role:   .text_field
+		rect:   rect
+		parent: am.root_id
+	}
+	am.nodes[id] = node
+	// Add to root children
+	mut parent_node := am.nodes[am.root_id]
+	parent_node.children << id
+	am.nodes[am.root_id] = parent_node
+	return id
+}
+
+// update_text_field updates text field attributes via backend.
+pub fn (mut am AccessibilityManager) update_text_field(node_id int, value string, selected_range Range, cursor_line int) {
+	am.backend.update_text_field(node_id, value, selected_range, cursor_line)
+}
+
+// post_notification posts an accessibility notification for a node.
+pub fn (mut am AccessibilityManager) post_notification(node_id int, notification AccessibilityNotification) {
+	am.backend.post_notification(node_id, notification)
+}
+
 pub fn (mut am AccessibilityManager) commit() {
 	if am.nodes.len == 0 {
 		return
