@@ -80,7 +80,11 @@ Plans:
 4. User triple-clicks line, entire line selects
 5. Cmd+A selects all text, selection rects API returns highlight geometry
 
-**Plans:** 0/0
+**Plans:** 2 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — Selection state + click-drag + auto-scroll
+- [ ] 12-02-PLAN.md — Keyboard selection + multi-click word/paragraph
 
 ---
 
@@ -191,7 +195,7 @@ Plans:
 | 9. Latency Optimizations | v1.2 | 3/3 | Complete | 2026-02-02 |
 | 10. Memory Optimization | v1.2 | 1/1 | Complete | 2026-02-02 |
 | 11. Cursor Foundation | v1.3 | 2/2 | Complete | 2026-02-02 |
-| 12. Selection | v1.3 | 0/0 | Pending | — |
+| 12. Selection | v1.3 | 0/2 | Pending | — |
 | 13. Text Mutation | v1.3 | 0/0 | Pending | — |
 | 14. Undo/Redo | v1.3 | 0/0 | Pending | — |
 | 15. IME Integration | v1.3 | 0/0 | Pending | — |
