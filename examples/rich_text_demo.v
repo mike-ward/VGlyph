@@ -1,3 +1,12 @@
+// rich_text_demo.v demonstrates styled text with StyleRun arrays.
+//
+// Features shown:
+// - RichText with StyleRun composition
+// - Per-run color and font styling
+// - Text decorations (underline, strikethrough)
+// - Variable font weight via OpenType axes
+//
+// Run: v run examples/rich_text_demo.v
 module main
 
 import gg

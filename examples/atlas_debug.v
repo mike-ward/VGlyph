@@ -1,3 +1,13 @@
+// atlas_debug.v demonstrates glyph atlas visualization.
+//
+// This is a development tool for debugging atlas packing and layout.
+//
+// Features shown:
+// - Glyph atlas texture visualization
+// - Atlas population with various scripts
+// - get_atlas_image() API usage
+//
+// Run: v run examples/atlas_debug.v
 module main
 
 import gg

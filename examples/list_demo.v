@@ -1,3 +1,11 @@
+// list_demo.v demonstrates hanging indent for bullet/numbered lists.
+//
+// Features shown:
+// - Negative indent for hanging first line
+// - Tab stops to align list content
+// - Wrapping text with preserved indent
+//
+// Run: v run examples/list_demo.v
 module main
 
 import gg

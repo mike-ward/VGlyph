@@ -3,7 +3,7 @@ module vglyph
 import gg as _
 
 // Test text_height caching optimization
-// This ensures that text_height returns correct Ink dimensions even if the text has not been rendered.
+// Ensures text_height returns correct Ink dimensions even if the text has not been rendered.
 fn test_text_height_no_draw() {
 	mut ctx := new_context(1.0)!
 	defer { ctx.free() }
@@ -32,7 +32,7 @@ fn test_text_height_no_draw() {
 
 	// Logical height is approximately line height.
 	// Visual height typically includes ascenders/descenders specific to the glyphs.
-	// For "Hello", it should be reasonably close to logical height, possibly smaller if no descenders.
+	// For "Hello", should be close to logical height, possibly smaller if no descenders.
 	println('Logical WxH: ${layout.width}x${layout.height}')
 	println('Visual  WxH: ${layout.visual_width}x${layout.visual_height}')
 

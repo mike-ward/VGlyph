@@ -1,3 +1,11 @@
+// inline_object_demo.v demonstrates inline objects embedded in text flow.
+//
+// Features shown:
+// - InlineObject space reservation in layout
+// - Manual drawing of objects at reserved positions
+// - Mixed text and graphical content
+//
+// Run: v run examples/inline_object_demo.v
 module main
 
 import gg
@@ -15,7 +23,7 @@ fn init(mut app AppInline) {
 
 	// Use a default font or system font
 	// For demo purposes, we rely on Pango finding a default.
-	app.ts.add_font_file('assets/RobotoFlex.ttf')
+	app.ts.add_font_file('assets/RobotoFlex.ttf') or {}
 
 	// Create Rich Text with Inline Object
 	rt := vglyph.RichText{
@@ -61,7 +69,7 @@ fn init(mut app AppInline) {
 		}
 	}
 
-	resolved := app.ts.resolve_font_name('Roboto Flex')
+	resolved := app.ts.resolve_font_name('Roboto Flex') or { 'Error: ${err}' }
 	println('Resolved "Roboto Flex" to: "${resolved}"')
 
 	app.layout = app.ts.layout_rich_text(rt, cfg) or { panic(err) }

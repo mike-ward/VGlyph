@@ -12,6 +12,7 @@ mut:
 	is_dirty bool
 }
 
+// new_accessibility_manager creates a manager with platform-specific backend.
 pub fn new_accessibility_manager() &AccessibilityManager {
 	backend := new_accessibility_backend()
 	return &AccessibilityManager{
@@ -67,15 +68,18 @@ pub fn (mut am AccessibilityManager) create_text_field_node(rect gg.Rect) int {
 }
 
 // update_text_field updates text field attributes via backend.
-pub fn (mut am AccessibilityManager) update_text_field(node_id int, value string, selected_range Range, cursor_line int) {
+pub fn (mut am AccessibilityManager) update_text_field(node_id int, value string,
+	selected_range Range, cursor_line int) {
 	am.backend.update_text_field(node_id, value, selected_range, cursor_line)
 }
 
 // post_notification posts an accessibility notification for a node.
-pub fn (mut am AccessibilityManager) post_notification(node_id int, notification AccessibilityNotification) {
+pub fn (mut am AccessibilityManager) post_notification(node_id int,
+	notification AccessibilityNotification) {
 	am.backend.post_notification(node_id, notification)
 }
 
+// commit pushes accumulated accessibility updates to the platform backend.
 pub fn (mut am AccessibilityManager) commit() {
 	if am.nodes.len == 0 {
 		return

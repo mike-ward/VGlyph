@@ -1,3 +1,11 @@
+// icon_font_grid.v demonstrates icon font rendering in a grid layout.
+//
+// Features shown:
+// - Custom icon font loading (feathericon.ttf)
+// - PUA (Private Use Area) codepoint rendering
+// - Grid layout of icon glyphs
+//
+// Run: v run examples/icon_font_grid.v
 module main
 
 import gg
@@ -47,11 +55,11 @@ fn init(mut app AppIconGrid) {
 
 	// Load the icon font
 	// Assume running from project root
-	if !app.ts.add_font_file('assets/feathericon.ttf') {
-		println('Failed to load font file: assets/feathericon.ttf')
-	} else {
-		println('Successfully loaded assets/feathericon.ttf')
+	app.ts.add_font_file('assets/feathericon.ttf') or {
+		println('Failed to load font file: ${err}')
+		return
 	}
+	println('Successfully loaded assets/feathericon.ttf')
 }
 
 fn main() {

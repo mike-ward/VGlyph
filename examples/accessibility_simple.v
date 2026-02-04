@@ -1,3 +1,11 @@
+// accessibility_simple.v demonstrates VoiceOver integration.
+//
+// Features shown:
+// - Automatic accessibility tree updates
+// - Multiple text elements exposed to screen readers
+// - Enable/disable accessibility support
+//
+// Run: v run examples/accessibility_simple.v
 module main
 
 import vglyph

@@ -1,3 +1,11 @@
+// typography_demo.v demonstrates OpenType features and tabular layout.
+//
+// Features shown:
+// - Custom tab stops for tabular data
+// - OpenType features (discretionary ligatures, fractions)
+// - Font introspection (get_font_name_at_index)
+//
+// Run: v run examples/typography_demo.v
 module main
 
 import gg

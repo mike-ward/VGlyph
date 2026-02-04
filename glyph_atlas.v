@@ -22,8 +22,16 @@ fn init_gamma_table() [256]u8 {
 
 const max_allocation_size = i64(1024 * 1024 * 1024) // 1GB
 
+// Max glyph bitmap size (256x256 pixels). Prevents oversized emoji from consuming atlas.
+const max_glyph_size = 256
+
 // check_allocation_size validates width * height * channels won't overflow or exceed limits.
 // Returns validated size or error with specific cause.
+//
+// Returns error if:
+// - size <= 0 (invalid dimensions)
+// - size > max_i32 (overflow)
+// - size > 1GB (allocation limit)
 fn check_allocation_size(w int, h int, channels int, location string) !i64 {
 	size := i64(w) * i64(h) * i64(channels)
 	if size <= 0 {
@@ -87,17 +95,23 @@ pub:
 }
 
 // new_atlas_page creates a new atlas page with the given dimensions.
+// Allocation limits:
+// - Uses check_allocation_size() with 1GB max
+// - Individual page typically 4096x4096x4 = 64MB max
+// - Total atlas memory: 4 pages * 64MB = 256MB max
+//
+// Returns error if:
+// - dimensions are non-positive
+// - allocation size exceeds limits (1GB max)
+// - memory allocation fails
 fn new_atlas_page(mut ctx gg.Context, w int, h int) !AtlasPage {
 	// Validate dimensions
 	if w <= 0 || h <= 0 {
-		return error('Atlas page dimensions must be positive: ${w}x${h}')
+		return error('atlas page dimensions must be positive: ${w}x${h}')
 	}
 
-	// Overflow check for size calculation
-	size := i64(w) * i64(h) * 4
-	if size <= 0 || size > max_i32 {
-		return error('Atlas page size overflow: ${w}x${h} = ${size} bytes')
-	}
+	// Check allocation size with consistent 1GB limit
+	size := check_allocation_size(w, h, 4, 'new_atlas_page')!
 
 	mut img := gg.Image{
 		width:       w
@@ -118,7 +132,7 @@ fn new_atlas_page(mut ctx gg.Context, w int, h int) !AtlasPage {
 	img.id = ctx.cache_image(img)
 	img.data = unsafe { vcalloc(int(size)) } // Zero-init to avoid visual artifacts
 	if img.data == unsafe { nil } {
-		return error('Failed to allocate atlas page memory: ${size} bytes')
+		return error('failed to allocate atlas page memory: ${size} bytes')
 	}
 
 	return AtlasPage{
@@ -130,6 +144,10 @@ fn new_atlas_page(mut ctx gg.Context, w int, h int) !AtlasPage {
 	}
 }
 
+// new_glyph_atlas creates a new glyph atlas with initial page dimensions.
+//
+// Returns error if:
+// - initial page creation fails (see new_atlas_page)
 fn new_glyph_atlas(mut ctx gg.Context, w int, h int) !GlyphAtlas {
 	// Create first page (lazy allocation - start with 1 page)
 	first_page := new_atlas_page(mut ctx, w, h)!
@@ -150,12 +168,21 @@ fn new_glyph_atlas(mut ctx gg.Context, w int, h int) !GlyphAtlas {
 
 pub struct LoadGlyphConfig {
 pub:
+	// FT_Face borrowed from Pango (pango_ft2_font_get_face), do not free.
+	// Pango owns the face lifetime; it's valid for the duration of the PangoFont.
 	face          &C.FT_FaceRec
 	index         u32
 	target_height int
 	subpixel_bin  int
 }
 
+// load_glyph rasterizes a glyph and inserts it into the atlas.
+//
+// Returns error if:
+// - FT_Load_Glyph fails (invalid glyph index)
+// - FT_Render_Glyph fails and fallback fails
+// - bitmap conversion fails (unsupported pixel mode, size overflow)
+// - atlas insertion fails (glyph too large)
 fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 	$if profile ? {
 		start := time.sys_mono_now()
@@ -216,9 +243,10 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 		// Note: V doesn't have easy access to the FT_GLYPH_FORMAT constants without binding them.
 		// However, if we used FT_LOAD_NO_BITMAP and got no error, and the format is NOT bitmap,
 		// we likely have an outline.
-		// But if the font IS bitmap-only, FT_Load_Glyph might have loaded the bitmap anyway despite NO_BITMAP?
+		// But if the font IS bitmap-only, FT_Load_Glyph might have loaded bitmap anyway?
 		// Or it returns an error?
-		// Standard FreeType behavior: "If the font contains a bitmap... it is loaded... unless NO_BITMAP is set... in which case the function returns an error if there is no outline."
+		// Standard FreeType behavior: "If the font contains a bitmap... it is loaded...
+		// unless NO_BITMAP is set... in which case the function returns an error if no outline."
 		// So if we are here, and `flags` had NO_BITMAP, and no error, we have an outline!
 
 		// Shift amount in 26.6 fixed point
@@ -294,6 +322,7 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 
 // ft_bitmap_to_bitmap converts a raw FreeType bitmap (GRAY, MONO, or BGRA) into
 // a uniform 32-bit RGBA `Bitmap`.
+// Note: ft_face is borrowed from Pango (do not free). Used only for family_name check.
 //
 // Supported Modes:
 // - **GRAY (Grayscale)**: Common for anti-aliased text. Sets RGB=White (255)
@@ -305,9 +334,16 @@ fn (mut renderer Renderer) load_glyph(cfg LoadGlyphConfig) !CachedGlyph {
 // - **LCD (Subpixel)**: Flattens 3x width subpixel bitmap to RGBA by averaging
 //   subpixels for alpha. Used for high-DPI rendering.
 //   Important: Scales bitmap if size doesn't match target PPEM (size).
+//
+// Returns error if:
+// - bitmap is empty (null buffer, zero dimensions)
+// - bitmap size overflow (width * height * 4 > max_i32)
+// - unsupported pixel mode
+// - emoji bitmap exceeds max glyph size (256x256)
+// - LCD bitmap width < 3
 pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_height int) !Bitmap {
 	if bmp.buffer == 0 || bmp.width == 0 || bmp.rows == 0 {
-		return error('Empty bitmap')
+		return error('empty bitmap')
 	}
 
 	mut width := int(bmp.width)
@@ -317,7 +353,7 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 	// Calculate output buffer size (always RGBA)
 	out_length := i64(width) * i64(height) * i64(channels)
 	if out_length > max_i32 || out_length <= 0 {
-		return error('Bitmap size overflow: ${width}x${height}')
+		return error('bitmap size overflow: ${width}x${height}')
 	}
 
 	// Allocate output buffer - don't clone from input as FT buffer layout varies by pixel mode
@@ -363,7 +399,7 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 		u8(C.FT_PIXEL_MODE_LCD) {
 			// FreeType LCD bitmaps are 3x wider (physical subpixels)
 			if width < 3 {
-				return error('Invalid LCD bitmap width: ${width}')
+				return error('invalid LCD bitmap width: ${width}')
 			}
 			logical_width := width / 3
 
@@ -395,9 +431,10 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 			width = logical_width
 		}
 		u8(C.FT_PIXEL_MODE_BGRA) {
-			// Clamp to max texture size per CONTEXT.md decision
-			if width > 256 || height > 256 {
-				return error('Emoji bitmap exceeds max size 256x256: ${width}x${height}')
+			// Clamp to max glyph size per CONTEXT.md decision
+			if width > max_glyph_size || height > max_glyph_size {
+				max_sz := max_glyph_size
+				return error('emoji bitmap exceeds max size ${max_sz}x${max_sz}: ${width}x${height}')
 			}
 
 			// Copy BGRA to RGBA without scaling
@@ -417,8 +454,8 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 			// Native resolution stored, GPU handles scaling via destination rect
 		}
 		else {
-			log.error('${@FILE_LINE}: Unsupported FT pixel mode: ${bmp.pixel_mode}')
-			return error('Unsupported FT pixel mode: ${bmp.pixel_mode}')
+			log.error('${@FILE_LINE}: unsupported FT pixel mode: ${bmp.pixel_mode}')
+			return error('unsupported FT pixel mode: ${bmp.pixel_mode}')
 		}
 	}
 
@@ -440,7 +477,15 @@ pub fn ft_bitmap_to_bitmap(bmp &C.FT_Bitmap, ft_face &C.FT_FaceRec, target_heigh
 //
 // Returns the UV coordinates and bearing info for the cached glyph,
 // a bool indicating if reset occurred, and the reset page index.
-pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(CachedGlyph, bool, int) {
+//
+// Returns error if:
+// - glyph dimensions exceed max atlas size
+// - glyph too large after page grow/add/reset
+// - page grow fails (allocation error)
+// - new page creation fails
+// - bitmap copy fails (out of bounds)
+pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int,
+	top int) !(CachedGlyph, bool, int) {
 	$if profile ? {
 		atlas.atlas_inserts++
 	}
@@ -450,7 +495,8 @@ pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(Cac
 
 	// Validate glyph dimensions don't exceed atlas max size
 	if glyph_w > atlas.max_height || glyph_h > atlas.max_height {
-		return error('Glyph dimensions (${glyph_w}x${glyph_h}) exceed max atlas size (${atlas.max_height})')
+		max_h := atlas.max_height
+		return error('glyph dimensions (${glyph_w}x${glyph_h}) exceed max atlas size (${max_h})')
 	}
 	if glyph_w <= 0 || glyph_h <= 0 {
 		return CachedGlyph{}, false, 0 // Empty glyph, nothing to insert
@@ -500,10 +546,10 @@ pub fn (mut atlas GlyphAtlas) insert_bitmap(bmp Bitmap, left int, top int) !(Cac
 
 	// Double check after grow/add/reset (if glyph is HUGE, it might still fail)
 	if page.cursor_y + glyph_h > page.height {
-		return error('Glyph too large for atlas page')
+		return error('glyph too large for atlas page')
 	}
 
-	copy_bitmap_to_page(mut page, bmp, page.cursor_x, page.cursor_y)
+	copy_bitmap_to_page(mut page, bmp, page.cursor_x, page.cursor_y)!
 	page.dirty = true
 
 	// Compute UVs and cached glyph
@@ -561,6 +607,10 @@ fn (mut atlas GlyphAtlas) reset_page(page_idx int) {
 }
 
 // grow_page increases the height of a specific page.
+//
+// Returns error if:
+// - new allocation size exceeds limits (1GB max)
+// - memory allocation fails
 pub fn (mut atlas GlyphAtlas) grow_page(page_idx int, new_height int) ! {
 	mut page := &atlas.pages[page_idx]
 	if new_height <= page.height {
@@ -615,11 +665,16 @@ pub fn (mut atlas GlyphAtlas) grow_page(page_idx int, new_height int) ! {
 	page.dirty = true // Force upload
 }
 
-fn copy_bitmap_to_page(mut page AtlasPage, bmp Bitmap, x int, y int) {
+// copy_bitmap_to_page copies bitmap data to atlas page at (x, y).
+//
+// Returns error if:
+// - coordinates are out of bounds
+fn copy_bitmap_to_page(mut page AtlasPage, bmp Bitmap, x int, y int) ! {
 	// Bounds validation
 	if x < 0 || y < 0 || x + bmp.width > page.width || y + bmp.height > page.height {
-		log.error('${@FILE_LINE}: Bitmap copy out of bounds: pos(${x},${y}) size(${bmp.width}x${bmp.height}) page(${page.width}x${page.height})')
-		return
+		sz := '${bmp.width}x${bmp.height}'
+		pg := '${page.width}x${page.height}'
+		return error('bitmap copy out of bounds: pos(${x},${y}) size(${sz}) page(${pg})')
 	}
 	if bmp.width <= 0 || bmp.height <= 0 || bmp.data.len == 0 {
 		return
@@ -635,6 +690,7 @@ fn copy_bitmap_to_page(mut page AtlasPage, bmp Bitmap, x int, y int) {
 	}
 }
 
+// cleanup removes stale Sokol images from previous frames to prevent leaks.
 pub fn (mut atlas GlyphAtlas) cleanup(frame u64) {
 	if frame > atlas.last_frame {
 		for id in atlas.garbage {

@@ -9,49 +9,49 @@ Requirements for codebase quality audit. Security-first with thorough review and
 
 ### Security
 
-- [ ] **SEC-01**: All user text inputs validated (length, encoding)
-- [ ] **SEC-02**: Font paths sanitized before file access
-- [ ] **SEC-03**: Numeric inputs bounds-checked (sizes, positions, indices)
-- [ ] **SEC-04**: Memory allocations checked before use
-- [ ] **SEC-05**: Null pointers handled in all public APIs
-- [ ] **SEC-06**: Allocation limits enforced consistently
-- [ ] **SEC-07**: All error paths return proper errors (no silent failures)
-- [ ] **SEC-08**: Error types documented at function signatures
-- [ ] **SEC-09**: FreeType handles freed on all exit paths
-- [ ] **SEC-10**: Pango objects freed on all exit paths
-- [ ] **SEC-11**: Atlas resources cleaned up on destroy
+- [x] **SEC-01**: All user text inputs validated (length, encoding)
+- [x] **SEC-02**: Font paths sanitized before file access
+- [x] **SEC-03**: Numeric inputs bounds-checked (sizes, positions, indices)
+- [x] **SEC-04**: Memory allocations checked before use
+- [x] **SEC-05**: Null pointers handled in all public APIs
+- [x] **SEC-06**: Allocation limits enforced consistently
+- [x] **SEC-07**: All error paths return proper errors (no silent failures)
+- [x] **SEC-08**: Error types documented at function signatures
+- [x] **SEC-09**: FreeType handles freed on all exit paths
+- [x] **SEC-10**: Pango objects freed on all exit paths
+- [x] **SEC-11**: Atlas resources cleaned up on destroy
 
 ### Code Consistency
 
-- [ ] **CON-01**: Function naming follows consistent convention
-- [ ] **CON-02**: Variable naming follows consistent convention
-- [ ] **CON-03**: Type naming follows consistent convention
-- [ ] **CON-04**: Modules logically partitioned by responsibility
-- [ ] **CON-05**: Test files follow `_*.v` convention
-- [ ] **CON-06**: Error handling follows V idioms (`!` return, `or` blocks)
-- [ ] **CON-07**: Struct organization consistent across codebase
-- [ ] **CON-08**: All files pass `v fmt -verify`
-- [ ] **CON-09**: No lines exceed 99 characters (except preformatted)
+- [x] **CON-01**: Function naming follows consistent convention
+- [x] **CON-02**: Variable naming follows consistent convention
+- [x] **CON-03**: Type naming follows consistent convention
+- [x] **CON-04**: Modules logically partitioned by responsibility
+- [x] **CON-05**: Test files follow `_*.v` convention
+- [x] **CON-06**: Error handling follows V idioms (`!` return, `or` blocks)
+- [x] **CON-07**: Struct organization consistent across codebase
+- [x] **CON-08**: All files pass `v fmt -verify`
+- [x] **CON-09**: No lines exceed 99 characters (except preformatted)
 
 ### Documentation
 
-- [ ] **DOC-01**: Public API comments match actual behavior
-- [ ] **DOC-02**: Deprecated APIs marked with deprecation notice
-- [ ] **DOC-03**: README build instructions verified working
-- [ ] **DOC-04**: README feature list matches implemented features
-- [ ] **DOC-05**: README usage examples verified working
-- [ ] **DOC-06**: Complex logic has inline comments explaining why
-- [ ] **DOC-07**: Non-obvious algorithms documented
-- [ ] **DOC-08**: All example files have header comment describing purpose
+- [x] **DOC-01**: Public API comments match actual behavior
+- [x] **DOC-02**: Deprecated APIs marked with deprecation notice
+- [x] **DOC-03**: README build instructions verified working
+- [x] **DOC-04**: README feature list matches implemented features
+- [x] **DOC-05**: README usage examples verified working
+- [x] **DOC-06**: Complex logic has inline comments explaining why
+- [x] **DOC-07**: Non-obvious algorithms documented
+- [x] **DOC-08**: All example files have header comment describing purpose
 
 ### Verification
 
-- [ ] **VER-01**: All existing tests pass
-- [ ] **VER-02**: Broken tests fixed (or removed if test is wrong)
-- [ ] **VER-03**: Example programs run without errors
-- [ ] **VER-04**: Manual smoke test of text rendering
-- [ ] **VER-05**: Manual smoke test of text editing
-- [ ] **VER-06**: Manual smoke test of IME input
+- [x] **VER-01**: All existing tests pass
+- [x] **VER-02**: Broken tests fixed (or removed if test is wrong)
+- [x] **VER-03**: Example programs run without errors
+- [x] **VER-04**: Manual smoke test of text rendering
+- [x] **VER-05**: Manual smoke test of text editing
+- [x] **VER-06**: Manual smoke test of IME input
 
 ## Out of Scope
 
@@ -66,40 +66,40 @@ Requirements for codebase quality audit. Security-first with thorough review and
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | 22 | Pending |
-| SEC-02 | 22 | Pending |
-| SEC-03 | 22 | Pending |
-| SEC-04 | 22 | Pending |
-| SEC-05 | 22 | Pending |
-| SEC-06 | 22 | Pending |
-| SEC-07 | 22 | Pending |
-| SEC-08 | 22 | Pending |
-| SEC-09 | 22 | Pending |
-| SEC-10 | 22 | Pending |
-| SEC-11 | 22 | Pending |
-| CON-01 | 23 | Pending |
-| CON-02 | 23 | Pending |
-| CON-03 | 23 | Pending |
-| CON-04 | 23 | Pending |
-| CON-05 | 23 | Pending |
-| CON-06 | 23 | Pending |
-| CON-07 | 23 | Pending |
-| CON-08 | 23 | Pending |
-| CON-09 | 23 | Pending |
-| DOC-01 | 24 | Pending |
-| DOC-02 | 24 | Pending |
-| DOC-03 | 24 | Pending |
-| DOC-04 | 24 | Pending |
-| DOC-05 | 24 | Pending |
-| DOC-06 | 24 | Pending |
-| DOC-07 | 24 | Pending |
-| DOC-08 | 24 | Pending |
-| VER-01 | 25 | Pending |
-| VER-02 | 25 | Pending |
-| VER-03 | 25 | Pending |
-| VER-04 | 25 | Pending |
-| VER-05 | 25 | Pending |
-| VER-06 | 25 | Pending |
+| SEC-01 | 22 | Complete |
+| SEC-02 | 22 | Complete |
+| SEC-03 | 22 | Complete |
+| SEC-04 | 22 | Complete |
+| SEC-05 | 22 | Complete |
+| SEC-06 | 22 | Complete |
+| SEC-07 | 22 | Complete |
+| SEC-08 | 22 | Complete |
+| SEC-09 | 22 | Complete |
+| SEC-10 | 22 | Complete |
+| SEC-11 | 22 | Complete |
+| CON-01 | 23 | Complete |
+| CON-02 | 23 | Complete |
+| CON-03 | 23 | Complete |
+| CON-04 | 23 | Complete |
+| CON-05 | 23 | Complete |
+| CON-06 | 23 | Complete |
+| CON-07 | 23 | Complete |
+| CON-08 | 23 | Complete |
+| CON-09 | 23 | Complete |
+| DOC-01 | 24 | Complete |
+| DOC-02 | 24 | Complete |
+| DOC-03 | 24 | Complete |
+| DOC-04 | 24 | Complete |
+| DOC-05 | 24 | Complete |
+| DOC-06 | 24 | Complete |
+| DOC-07 | 24 | Complete |
+| DOC-08 | 24 | Complete |
+| VER-01 | 25 | Complete |
+| VER-02 | 25 | Complete |
+| VER-03 | 25 | Complete |
+| VER-04 | 25 | Complete |
+| VER-05 | 25 | Complete |
+| VER-06 | 25 | Complete |
 
 **Coverage:**
 - v1.5 requirements: 31 total
@@ -108,4 +108,4 @@ Requirements for codebase quality audit. Security-first with thorough review and
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after roadmap creation*
+*Last updated: 2026-02-04 after Phase 25 completion (v1.5 complete)*

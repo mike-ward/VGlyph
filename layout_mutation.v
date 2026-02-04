@@ -226,7 +226,8 @@ pub fn delete_selection(text string, cursor int, anchor int) MutationResult {
 // insert_replacing_selection inserts text, replacing any selection.
 // Per user decision: "Typing with selection active replaces selection (standard behavior)"
 // Delegates to insert_text if no selection.
-pub fn insert_replacing_selection(text string, cursor int, anchor int, insert string) MutationResult {
+pub fn insert_replacing_selection(text string, cursor int, anchor int,
+	insert string) MutationResult {
 	// No selection - delegate to simple insert
 	if cursor == anchor {
 		return insert_text(text, cursor, insert)

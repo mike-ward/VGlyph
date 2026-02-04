@@ -106,3 +106,124 @@ fn test_get_cache_key_diff_typeface() {
 
 	assert key1 != key2
 }
+
+// ============================================================================
+// API-level validation integration tests (SEC-01, SEC-02, SEC-03)
+// ============================================================================
+
+fn test_api_layout_text_invalid_utf8() {
+	// Invalid UTF-8 bytes should be rejected at API boundary
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+	cfg := TextConfig{}
+
+	invalid_bytes := [u8(0xff), 0xfe].bytestr()
+	ts.layout_text(invalid_bytes, cfg) or {
+		assert err.msg().contains('invalid UTF-8')
+		return
+	}
+	assert false, 'Invalid UTF-8 should error'
+}
+
+fn test_api_layout_text_empty_string() {
+	// Empty string should be rejected
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+	cfg := TextConfig{}
+
+	ts.layout_text('', cfg) or {
+		assert err.msg().contains('empty string')
+		return
+	}
+	assert false, 'Empty string should error'
+}
+
+fn test_api_add_font_file_nonexistent() {
+	// Nonexistent font path should return error
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+
+	ts.add_font_file('/nonexistent/path/font.ttf') or {
+		assert err.msg().contains('does not exist')
+		return
+	}
+	assert false, 'Nonexistent path should error'
+}
+
+fn test_api_add_font_file_path_traversal() {
+	// Path traversal should be rejected
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+
+	ts.add_font_file('/fonts/../etc/passwd') or {
+		assert err.msg().contains('path traversal')
+		return
+	}
+	assert false, 'Path traversal should error'
+}
+
+fn test_api_layout_text_too_long() {
+	// Text exceeding max length should be rejected
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+	cfg := TextConfig{}
+
+	// Create string > 10KB
+	long_text := 'x'.repeat(11000)
+	ts.layout_text(long_text, cfg) or {
+		assert err.msg().contains('exceeds max')
+		return
+	}
+	assert false, 'Too long text should error'
+}
+
+fn test_api_new_text_system_atlas_invalid_dimension() {
+	// Zero atlas dimension should error
+	// Note: This requires a gg context, so we test the validator directly
+	validate_dimension(0, 'atlas_width', 'test') or {
+		assert err.msg().contains('must be positive')
+		return
+	}
+	assert false, 'Zero dimension should error'
+}
+
+fn test_api_layout_rich_text_invalid_utf8() {
+	// Invalid UTF-8 in rich text run should be rejected
+	mut ts := TextSystem{
+		ctx:      unsafe { nil }
+		renderer: unsafe { nil }
+		am:       unsafe { nil }
+	}
+	cfg := TextConfig{}
+
+	invalid_bytes := [u8(0xff), 0xfe].bytestr()
+	rt := RichText{
+		runs: [
+			StyleRun{
+				text:  invalid_bytes
+				style: TextStyle{}
+			},
+		]
+	}
+
+	ts.layout_rich_text(rt, cfg) or {
+		assert err.msg().contains('invalid UTF-8')
+		return
+	}
+	assert false, 'Invalid UTF-8 in rich text should error'
+}

@@ -54,7 +54,8 @@ pub fn new_undo_manager(max_history int) UndoManager {
 
 // mutation_to_undo_op converts MutationResult to UndoOperation.
 // Determines operation type based on deleted/inserted text lengths.
-pub fn mutation_to_undo_op(result MutationResult, inserted string, cursor_before int, anchor_before int) UndoOperation {
+pub fn mutation_to_undo_op(result MutationResult, inserted string, cursor_before int,
+	anchor_before int) UndoOperation {
 	op_type := if result.deleted_text.len > 0 && inserted.len > 0 {
 		OperationType.replace
 	} else if inserted.len > 0 {
@@ -137,7 +138,8 @@ fn (mut um UndoManager) coalesce_operation(new_op UndoOperation) {
 
 // record_mutation tracks mutation for undo support.
 // Handles coalescing, clears redo stack on new operation.
-pub fn (mut um UndoManager) record_mutation(result MutationResult, inserted string, cursor_before int, anchor_before int) {
+pub fn (mut um UndoManager) record_mutation(result MutationResult, inserted string,
+	cursor_before int, anchor_before int) {
 	now := time.now().unix_milli()
 	new_op := mutation_to_undo_op(result, inserted, cursor_before, anchor_before)
 

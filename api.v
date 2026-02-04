@@ -29,6 +29,11 @@ mut:
 
 // new_text_system creates a new TextSystem, initializing Pango context and
 // Renderer.
+//
+// Returns error if:
+// - FreeType library initialization fails
+// - Pango font map creation fails
+// - Pango context creation fails
 pub fn new_text_system(mut gg_ctx gg.Context) !&TextSystem {
 	scale := sapp.dpi_scale()
 	tr_ctx := new_context(scale)!
@@ -42,7 +47,17 @@ pub fn new_text_system(mut gg_ctx gg.Context) !&TextSystem {
 	}
 }
 
-pub fn new_text_system_atlas_size(mut gg_ctx gg.Context, atlas_width int, atlas_height int) !&TextSystem {
+// new_text_system_atlas_size creates a TextSystem with custom atlas dimensions.
+//
+// Returns error if:
+// - atlas_width or atlas_height is non-positive or exceeds max texture dimension (16384)
+// - FreeType/Pango initialization fails (see new_text_system)
+pub fn new_text_system_atlas_size(mut gg_ctx gg.Context, atlas_width int,
+	atlas_height int) !&TextSystem {
+	// Validate atlas dimensions
+	validate_dimension(atlas_width, 'atlas_width', @FN)!
+	validate_dimension(atlas_height, 'atlas_height', @FN)!
+
 	scale := sapp.dpi_scale()
 	tr_ctx := new_context(scale)!
 	renderer := new_renderer_atlas_size(mut gg_ctx, atlas_width, atlas_height, scale)
@@ -57,7 +72,18 @@ pub fn new_text_system_atlas_size(mut gg_ctx gg.Context, atlas_width int, atlas_
 // draw_text renders text string at (x, y) using configuration.
 // Handles layout caching to optimize performance for repeated calls.
 // [TextConfig](#TextConfig)
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context or renderer
+// - layout creation fails
 pub fn (mut ts TextSystem) draw_text(x f32, y f32, text string, cfg TextConfig) ! {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
+	if ts.renderer == unsafe { nil } {
+		return error('null renderer at ${@FILE}:${@LINE}')
+	}
 	// ts.prune_cache() moved to commit()
 	item := ts.get_or_create_layout(text, cfg)!
 	ts.renderer.draw_layout(item.layout, x, y)
@@ -69,14 +95,30 @@ pub fn (mut ts TextSystem) draw_text(x f32, y f32, text string, cfg TextConfig) 
 
 // text_width calculates width (pixels) of text if rendered with config.
 // Useful for layout calculations before rendering. [TextConfig](#TextConfig)
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context
+// - layout creation fails
 pub fn (mut ts TextSystem) text_width(text string, cfg TextConfig) !f32 {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	item := ts.get_or_create_layout(text, cfg)!
 	return item.layout.width
 }
 
 // text_height calculates visual height (pixels) of text.
 // Corresponds to vertical space occupied. [TextConfig](#TextConfig)
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context
+// - layout creation fails
 pub fn (mut ts TextSystem) text_height(text string, cfg TextConfig) !f32 {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	item := ts.get_or_create_layout(text, cfg)!
 	return item.layout.visual_height
 }
@@ -84,18 +126,35 @@ pub fn (mut ts TextSystem) text_height(text string, cfg TextConfig) !f32 {
 // font_height returns the true height of the font (ascent + descent) in pixels.
 // This is the vertical space the font claims, including descenders, regardless
 // of the actual text content. [TextConfig](#TextConfig)
-pub fn (mut ts TextSystem) font_height(cfg TextConfig) f32 {
+//
+// Returns error if:
+// - null context
+// - font description invalid, font not found, or metrics unavailable
+pub fn (mut ts TextSystem) font_height(cfg TextConfig) !f32 {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	return ts.ctx.font_height(cfg)
 }
 
 // font_metrics returns the metrics of the font given the config.
 // [TextConfig](#TextConfig)
-pub fn (mut ts TextSystem) font_metrics(cfg TextConfig) TextMetrics {
+//
+// Returns error if:
+// - null context
+// - font description invalid, font not found, or metrics unavailable
+pub fn (mut ts TextSystem) font_metrics(cfg TextConfig) !TextMetrics {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	return ts.ctx.font_metrics(cfg)
 }
 
 // commit should be called at the end of the frame to upload the texture atlas.
 pub fn (mut ts TextSystem) commit() {
+	if ts.renderer == unsafe { nil } {
+		return
+	}
 	ts.renderer.commit()
 	if ts.accessibility_enabled {
 		ts.am.commit()
@@ -103,35 +162,76 @@ pub fn (mut ts TextSystem) commit() {
 	ts.prune_cache()
 }
 
+// get_atlas_image returns the first glyph atlas page's gg.Image for debugging.
 pub fn (ts &TextSystem) get_atlas_image() gg.Image {
+	if ts.renderer == unsafe { nil } {
+		return gg.Image{}
+	}
 	if ts.renderer.atlas.pages.len == 0 {
 		return gg.Image{}
 	}
 	return ts.renderer.atlas.pages[0].image
 }
 
-// add_font_file registers a font file (TTF/OTF). Returns true if successful.
+// add_font_file registers a font file (TTF/OTF).
 // Once added, refer to font by its family name in TextConfig.font_name.
-pub fn (mut ts TextSystem) add_font_file(path string) bool {
-	return ts.ctx.add_font_file(path)
+//
+// Returns error if:
+// - path is empty, contains traversal (..), or does not exist
+// - null context
+// - FontConfig initialization fails
+// - font file format is invalid
+pub fn (mut ts TextSystem) add_font_file(path string) ! {
+	// Validate font path first (fail fast on bad input)
+	validate_font_path(path, @FN)!
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
+	ts.ctx.add_font_file(path)!
 }
 
 // resolve_font_name returns the actual font family name that Pango resolves
 // for the given font description string. Useful for debugging.
-pub fn (mut ts TextSystem) resolve_font_name(name string) string {
+//
+// Returns error if:
+// - null context
+// - font description string is invalid
+// - font loading fails
+pub fn (mut ts TextSystem) resolve_font_name(name string) !string {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	return ts.ctx.resolve_font_name(name)
 }
 
 // layout_text computes the layout for the given text and config.
 // This bypasses the cache and returns a new Layout struct.
 // Useful for advanced text manipulation (hit testing, measuring).
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context
+// - Pango layout creation fails
 pub fn (mut ts TextSystem) layout_text(text string, cfg TextConfig) !Layout {
+	// Validate text input first (fail fast on bad input)
+	validate_text_input(text, max_text_length, @FN)!
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	return ts.ctx.layout_text(text, cfg)
 }
 
 // layout_text_cached retrieves a cached layout or wraps text if not in cache.
 // Returns a copy of the Layout struct (cheap).
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context
+// - Pango layout creation fails
 pub fn (mut ts TextSystem) layout_text_cached(text string, cfg TextConfig) !Layout {
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	// ts.prune_cache() moved to commit()
 	item := ts.get_or_create_layout(text, cfg)!
 	return item.layout
@@ -139,12 +239,27 @@ pub fn (mut ts TextSystem) layout_text_cached(text string, cfg TextConfig) !Layo
 
 // layout_rich_text computes the layout for the given RichText and config.
 // Useful for rendering attributed strings.
+//
+// Returns error if:
+// - any run's text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - null context
+// - Pango layout creation fails
 pub fn (mut ts TextSystem) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
+	// Validate each run's text first (fail fast on bad input)
+	for run in rt.runs {
+		validate_text_input(run.text, max_text_length, @FN)!
+	}
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
 	return ts.ctx.layout_rich_text(rt, cfg)
 }
 
 // draw_layout renders a pre-computed layout.
 pub fn (mut ts TextSystem) draw_layout(l Layout, x f32, y f32) {
+	if ts.renderer == unsafe { nil } {
+		return
+	}
 	ts.renderer.draw_layout(l, x, y)
 	if ts.accessibility_enabled {
 		update_accessibility(mut ts.am, l, x, y)
@@ -153,6 +268,9 @@ pub fn (mut ts TextSystem) draw_layout(l Layout, x f32, y f32) {
 
 // draw_layout_rotated renders a layout rotated by an angle (radians) around its origin.
 pub fn (mut ts TextSystem) draw_layout_rotated(l Layout, x f32, y f32, angle f32) {
+	if ts.renderer == unsafe { nil } {
+		return
+	}
 	ts.renderer.draw_layout_rotated(l, x, y, angle)
 	if ts.accessibility_enabled {
 		// For accessibility, we currently report the un-rotated bounding box at (x,y).
@@ -162,8 +280,12 @@ pub fn (mut ts TextSystem) draw_layout_rotated(l Layout, x f32, y f32, angle f32
 }
 
 // draw_composition renders IME preedit visual feedback (clause underlines and cursor).
-// Per CONTEXT.md: thick underline for selected clause, thin for others, cursor at ~70% opacity.
-pub fn (mut ts TextSystem) draw_composition(layout Layout, x f32, y f32, cs &CompositionState, cursor_color gg.Color) {
+// Per CONTEXT.md: thick underline for selected clause, thin for others, cursor ~70% opacity.
+pub fn (mut ts TextSystem) draw_composition(layout Layout, x f32, y f32, cs &CompositionState,
+	cursor_color gg.Color) {
+	if ts.renderer == unsafe { nil } {
+		return
+	}
 	ts.renderer.draw_composition(layout, x, y, cs, cursor_color)
 }
 
@@ -182,12 +304,19 @@ pub fn (mut ts TextSystem) update_accessibility(l Layout, x f32, y f32) {
 // get_or_create_layout retrieves a cached layout or creates a new one.
 // Updates the last access time for cache eviction tracking.
 fn (mut ts TextSystem) get_or_create_layout(text string, cfg TextConfig) !&CachedLayout {
+	// Validate text input first (fail fast on bad input)
+	validate_text_input(text, max_text_length, @FN)!
+	if ts.ctx == unsafe { nil } {
+		return error('null context at ${@FILE}:${@LINE}')
+	}
+
 	key := ts.get_cache_key(text, &cfg)
 
 	if key in ts.cache {
 		$if profile ? {
 			ts.layout_cache_hits++
 		}
+		// unreachable: map access after 'key in ts.cache' check
 		mut item := ts.cache[key] or { panic('unreachable') }
 		item.last_access = time.ticks()
 		return item

@@ -15,10 +15,12 @@ fn (mut b StubAccessibilityBackend) set_focus(node_id int) {
 	// Do nothing
 }
 
-fn (mut b StubAccessibilityBackend) post_notification(node_id int, notification AccessibilityNotification) {
+fn (mut b StubAccessibilityBackend) post_notification(node_id int,
+	notification AccessibilityNotification) {
 	// Do nothing
 }
 
-fn (mut b StubAccessibilityBackend) update_text_field(node_id int, value string, selected_range Range, cursor_line int) {
+fn (mut b StubAccessibilityBackend) update_text_field(node_id int, value string,
+	selected_range Range, cursor_line int) {
 	// Do nothing
 }

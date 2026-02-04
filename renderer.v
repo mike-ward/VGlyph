@@ -39,7 +39,10 @@ pub:
 	max_glyph_cache_entries int = 4096
 }
 
-pub fn new_renderer_with_config(mut ctx gg.Context, scale_factor f32, cfg RendererConfig) &Renderer {
+// Panic at init is acceptable per PROJECT.md: if we can't allocate the initial atlas,
+// the text system cannot function. Callers (new_text_system) propagate errors upward.
+pub fn new_renderer_with_config(mut ctx gg.Context, scale_factor f32,
+	cfg RendererConfig) &Renderer {
 	mut atlas := new_glyph_atlas(mut ctx, 1024, 1024) or { panic(err) }
 	safe_scale := if scale_factor > 0 { scale_factor } else { 1.0 }
 	max := if cfg.max_glyph_cache_entries < 256 { 256 } else { cfg.max_glyph_cache_entries }
@@ -55,15 +58,21 @@ pub fn new_renderer_with_config(mut ctx gg.Context, scale_factor f32, cfg Render
 	}
 }
 
+// new_renderer creates a Renderer with default atlas size (1024x1024).
 pub fn new_renderer(mut ctx gg.Context, scale_factor f32) &Renderer {
 	return new_renderer_with_config(mut ctx, scale_factor, RendererConfig{})
 }
 
-pub fn new_renderer_atlas_size(mut ctx gg.Context, width int, height int, scale_factor f32) &Renderer {
+// new_renderer_atlas_size creates a Renderer with custom initial atlas dimensions.
+pub fn new_renderer_atlas_size(mut ctx gg.Context, width int, height int,
+	scale_factor f32) &Renderer {
 	return new_renderer_atlas_size_with_config(mut ctx, width, height, scale_factor, RendererConfig{})
 }
 
-pub fn new_renderer_atlas_size_with_config(mut ctx gg.Context, width int, height int, scale_factor f32, cfg RendererConfig) &Renderer {
+// Panic at init is acceptable: if atlas creation fails, the text system cannot function.
+// Callers (new_text_system_atlas_size) propagate errors upward.
+pub fn new_renderer_atlas_size_with_config(mut ctx gg.Context, width int, height int,
+	scale_factor f32, cfg RendererConfig) &Renderer {
 	mut atlas := new_glyph_atlas(mut ctx, width, height) or { panic(err) }
 	safe_scale := if scale_factor > 0 { scale_factor } else { 1.0 }
 	max := if cfg.max_glyph_cache_entries < 256 { 256 } else { cfg.max_glyph_cache_entries }
@@ -187,9 +196,10 @@ pub fn (mut renderer Renderer) draw_layout(layout Layout, x f32, y f32) {
 			// (glyph.index << 2) | bin
 			// Logic now handled in get_or_load_glyph
 
-			cg := renderer.get_or_load_glyph(item, glyph, bin) or {
-				CachedGlyph{} // fallback blank glyph
-			}
+			// Intentional error suppression: missing glyph renders as blank space.
+			// This is correct behavior - a single glyph failure should not crash
+			// the entire text rendering. The empty CachedGlyph has width=0, height=0.
+			cg := renderer.get_or_load_glyph(item, glyph, bin) or { CachedGlyph{} }
 
 			// Update page age on use
 			if cg.page >= 0 && cg.page < renderer.atlas.pages.len {
@@ -303,7 +313,7 @@ pub fn (mut renderer Renderer) debug_insert_bitmap(bmp Bitmap, left int, top int
 // get_or_load_glyph retrieves a glyph from the cache or loads it from FreeType.
 fn (mut renderer Renderer) get_or_load_glyph(item Item, glyph Glyph, bin int) !CachedGlyph {
 	if item.ft_face == unsafe { nil } {
-		return error('Invalid font face')
+		return error('invalid font face')
 	}
 	font_id := u64(voidptr(item.ft_face))
 
@@ -319,13 +329,16 @@ fn (mut renderer Renderer) get_or_load_glyph(item Item, glyph Glyph, bin int) !C
 		}
 		// Update LRU age
 		renderer.cache_ages[key] = renderer.atlas.frame_counter
+		// unreachable: map access after 'key in renderer.cache' check
 		cached := renderer.cache[key] or { panic('unreachable') }
 
 		// Secondary key validation in debug builds
 		$if debug {
 			if cached.font_face != voidptr(item.ft_face) || cached.glyph_index != glyph.index
 				|| cached.subpixel_bin != u8(bin) {
-				panic('Glyph cache collision: key=0x${key:016x} expected face=${voidptr(item.ft_face)} index=${glyph.index} bin=${bin}, got face=${cached.font_face} index=${cached.glyph_index} bin=${cached.subpixel_bin}')
+				exp := 'face=${voidptr(item.ft_face)} index=${glyph.index} bin=${bin}'
+				got := 'face=${cached.font_face} index=${cached.glyph_index} bin=${cached.subpixel_bin}'
+				panic('Glyph cache collision: key=0x${key:016x} expected ${exp}, got ${got}')
 			}
 		}
 
@@ -462,6 +475,7 @@ pub fn (mut renderer Renderer) draw_layout_rotated(layout Layout, x f32, y f32, 
 				gy := cy - f32(glyph.y_offset)
 
 				// Load Glyph (Bin 0)
+				// Intentional error suppression: see draw_layout comment
 				cg := renderer.get_or_load_glyph(item, glyph, 0) or { CachedGlyph{} }
 
 				// Update page age on use
@@ -569,7 +583,8 @@ pub fn (mut renderer Renderer) draw_layout_rotated(layout Layout, x f32, y f32, 
 // - Preedit at ~70% opacity (alpha 178)
 // - Cursor visible at insertion point within preedit
 // - Thick underline for selected clause, thin for others
-pub fn (mut renderer Renderer) draw_composition(layout Layout, x f32, y f32, cs &CompositionState, cursor_color gg.Color) {
+pub fn (mut renderer Renderer) draw_composition(layout Layout, x f32, y f32,
+	cs &CompositionState, cursor_color gg.Color) {
 	if !cs.is_composing() {
 		return
 	}
@@ -613,7 +628,8 @@ pub fn (mut renderer Renderer) draw_composition(layout Layout, x f32, y f32, cs 
 // draw_layout_with_composition renders layout with preedit opacity applied.
 // Preedit text range gets alpha reduced to ~70%.
 // Call this instead of draw_layout when composition is active.
-pub fn (mut renderer Renderer) draw_layout_with_composition(layout Layout, x f32, y f32, cs &CompositionState) {
+pub fn (mut renderer Renderer) draw_layout_with_composition(layout Layout, x f32, y f32,
+	cs &CompositionState) {
 	// For now, draw normally - preedit opacity would require layout item modification
 	// or shader support. The underlines provide sufficient visual distinction.
 	// Full opacity reduction deferred to future enhancement.

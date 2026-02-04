@@ -1,3 +1,12 @@
+// style_demo.v demonstrates text styling options.
+//
+// Features shown:
+// - Foreground and background colors
+// - Text decorations (underline, strikethrough)
+// - Typeface variants (bold, italic, bold_italic)
+// - Combining multiple style attributes
+//
+// Run: v run examples/style_demo.v
 module main
 
 import gg

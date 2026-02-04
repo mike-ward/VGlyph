@@ -1,3 +1,11 @@
+// rotate_text.v demonstrates rotated and vertical text layout.
+//
+// Features shown:
+// - Animated text rotation (draw_layout_rotated)
+// - Vertical text orientation for CJK (Tategaki)
+// - Japanese vertical text rendering
+//
+// Run: v run examples/rotate_text.v
 module main
 
 import gg

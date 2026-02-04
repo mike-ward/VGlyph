@@ -7,7 +7,7 @@
 - ✅ **v1.2 Performance Optimization** — Phases 8-10 (shipped 2026-02-02)
 - ✅ **v1.3 Text Editing** — Phases 11-17 (shipped 2026-02-03)
 - ✅ **v1.4 CJK IME** — Phases 18-21 (shipped 2026-02-04, Korean first-keypress known issue)
-- 🔄 **v1.5 Codebase Quality Audit** — Phases 22-25
+- ✅ **v1.5 Codebase Quality Audit** — Phases 22-25 (shipped 2026-02-04)
 
 ## Phases
 
@@ -70,10 +70,10 @@ See: .planning/milestones/v1.4-ROADMAP.md for full details.
 
 </details>
 
-<details open>
-<summary>🔄 v1.5 Codebase Quality Audit (Phases 22-25)</summary>
+<details>
+<summary>✅ v1.5 Codebase Quality Audit (Phases 22-25) — SHIPPED 2026-02-04</summary>
 
-### Phase 22: Security Audit
+### Phase 22: Security Audit ✓
 
 **Goal:** All input paths validated, all error paths verified, all resources properly cleaned up
 
@@ -82,24 +82,26 @@ See: .planning/milestones/v1.4-ROADMAP.md for full details.
 **Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-07, SEC-08, SEC-09, SEC-10,
 SEC-11
 
-**Plans:** 4 plans
+**Plans:** 4/4 complete — completed 2026-02-04
 
 Plans:
-- [ ] 22-01-PLAN.md — Input validation (UTF-8, paths, numeric bounds)
-- [ ] 22-02-PLAN.md — Null handling and allocation safety
-- [ ] 22-03-PLAN.md — Error handling audit (no silent failures)
-- [ ] 22-04-PLAN.md — Resource cleanup verification and SECURITY.md
+- [x] 22-01-PLAN.md — Input validation (UTF-8, paths, numeric bounds)
+- [x] 22-02-PLAN.md — Null handling and allocation safety
+- [x] 22-03-PLAN.md — Error handling audit (no silent failures)
+- [x] 22-04-PLAN.md — Resource cleanup verification and SECURITY.md
 
 **Success Criteria:**
-1. User can pass malformed UTF-8 text without crash or memory corruption
-2. User can pass invalid font paths without crash or file system access outside allowed paths
-3. User can pass extreme numeric values (0, negative, MAX_INT) without overflow or undefined behavior
-4. All public API functions return proper errors on invalid input (no silent failures)
-5. Memory profiler shows no leaks in error paths (FreeType handles, Pango objects, atlas resources)
+1. ✓ User can pass malformed UTF-8 text without crash or memory corruption
+2. ✓ User can pass invalid font paths without crash or file system access outside allowed paths
+3. ✓ User can pass extreme numeric values (0, negative, MAX_INT) without overflow or undefined
+   behavior
+4. ✓ All public API functions return proper errors on invalid input (no silent failures)
+5. ✓ Memory profiler shows no leaks in error paths (FreeType handles, Pango objects, atlas
+   resources)
 
 ---
 
-### Phase 23: Code Consistency
+### Phase 23: Code Consistency ✓
 
 **Goal:** Codebase follows uniform conventions for naming, structure, and formatting
 
@@ -107,16 +109,23 @@ Plans:
 
 **Requirements:** CON-01, CON-02, CON-03, CON-04, CON-05, CON-06, CON-07, CON-08, CON-09
 
+**Plans:** 3/3 complete — completed 2026-02-04
+
+Plans:
+- [x] 23-01-PLAN.md — Formatting compliance and line length (CON-08, CON-09)
+- [x] 23-02-PLAN.md — Panic audit and error handling (CON-06)
+- [x] 23-03-PLAN.md — Doc comments and naming verification (CON-01 through CON-05, CON-07)
+
 **Success Criteria:**
-1. All source files formatted with `v fmt -w` (no diff after running)
-2. All test files follow `_*.v` naming pattern
-3. Grep for naming patterns shows consistent conventions (no mixed snake_case/camelCase)
-4. Error handling uses V idioms consistently (`!` returns, `or` blocks, no bare panics)
-5. No source lines exceed 99 characters
+1. ✓ All source files formatted with `v fmt -w` (no diff after running)
+2. ✓ All test files follow `_*.v` naming pattern
+3. ✓ Grep for naming patterns shows consistent conventions (no mixed snake_case/camelCase)
+4. ✓ Error handling uses V idioms consistently (`!` returns, `or` blocks, no bare panics)
+5. ✓ No source lines exceed 99 characters
 
 ---
 
-### Phase 24: Documentation
+### Phase 24: Documentation ✓
 
 **Goal:** Documentation accurately reflects current implementation
 
@@ -124,15 +133,22 @@ Plans:
 
 **Requirements:** DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06, DOC-07, DOC-08
 
+**Plans:** 3/3 complete — completed 2026-02-04
+
+Plans:
+- [x] 24-01-PLAN.md — Example file headers (DOC-08)
+- [x] 24-02-PLAN.md — README verification (DOC-03, DOC-04, DOC-05)
+- [x] 24-03-PLAN.md — API docs and algorithm documentation (DOC-01, DOC-02, DOC-06, DOC-07)
+
 **Success Criteria:**
-1. User can follow README build instructions and successfully compile on fresh checkout
-2. All public API doc comments match actual function signatures and behavior
-3. Example files each have header comment explaining what they demonstrate
-4. Complex algorithms (shaping, layout, atlas packing) have inline comments explaining approach
+1. ✓ User can follow README build instructions and successfully compile on fresh checkout
+2. ✓ All public API doc comments match actual function signatures and behavior
+3. ✓ Example files each have header comment explaining what they demonstrate
+4. ✓ Complex algorithms (shaping, layout, atlas packing) have inline comments explaining approach
 
 ---
 
-### Phase 25: Verification
+### Phase 25: Verification ✓
 
 **Goal:** All tests pass and manual smoke tests confirm functionality
 
@@ -140,12 +156,17 @@ Plans:
 
 **Requirements:** VER-01, VER-02, VER-03, VER-04, VER-05, VER-06
 
+**Plans:** 1/1 complete — completed 2026-02-04
+
+Plans:
+- [x] 25-01-PLAN.md — Run tests, compile examples, generate verification report
+
 **Success Criteria:**
-1. `v test .` passes with 100% of tests green
-2. All example programs run without errors or warnings
-3. Manual test: text renders correctly at various sizes and with different fonts
-4. Manual test: text editing (cursor, selection, insert, delete, undo/redo) works
-5. Manual test: IME input (dead keys, CJK composition) produces correct characters
+1. ✓ `v test .` passes with 100% of tests green
+2. ✓ All example programs run without errors or warnings
+3. ✓ Manual test: text renders correctly at various sizes and with different fonts
+4. ✓ Manual test: text editing (cursor, selection, insert, delete, undo/redo) works
+5. ✓ Manual test: IME input (dead keys, CJK composition) produces correct characters
 
 </details>
 
@@ -174,10 +195,10 @@ Plans:
 | 19. NSTextInputClient + JP/CH | v1.4 | 3/3 | Complete | 2026-02-04 |
 | 20. Korean + Keyboard | v1.4 | 2/2 | Partial* | 2026-02-04 |
 | 21. Multi-Display & Polish | v1.4 | 3/3 | Complete | 2026-02-04 |
-| 22. Security Audit | v1.5 | 0/4 | Planned | — |
-| 23. Code Consistency | v1.5 | 0/? | Pending | — |
-| 24. Documentation | v1.5 | 0/? | Pending | — |
-| 25. Verification | v1.5 | 0/? | Pending | — |
+| 22. Security Audit | v1.5 | 4/4 | Complete | 2026-02-04 |
+| 23. Code Consistency | v1.5 | 3/3 | Complete | 2026-02-04 |
+| 24. Documentation | v1.5 | 3/3 | Complete | 2026-02-04 |
+| 25. Verification | v1.5 | 1/1 | Complete | 2026-02-04 |
 
 ---
-*Last updated: 2026-02-04 after Phase 22 planning*
+*Last updated: 2026-02-04 — v1.5 Codebase Quality Audit milestone complete*

@@ -1,3 +1,11 @@
+// emoji_demo.v demonstrates color emoji rendering across font sizes.
+//
+// Features shown:
+// - Apple Color Emoji font loading
+// - Emoji mixed with text
+// - Emoji scaling at multiple sizes
+//
+// Run: v run examples/emoji_demo.v
 module main
 
 import gg
@@ -35,9 +43,7 @@ fn init(mut app EmojiApp) {
 	// Load Apple Color Emoji on macOS
 	// Note: Path depends on OS, assuming macOS based on user info
 	path := '/System/Library/Fonts/Apple Color Emoji.ttc'
-	if !app.ts.add_font_file(path) {
-		println('Warning: Could not load Apple Color Emoji. Ensure path is correct.')
-	}
+	app.ts.add_font_file(path) or { println('Warning: Could not load Apple Color Emoji: ${err}') }
 }
 
 fn frame(mut app EmojiApp) {

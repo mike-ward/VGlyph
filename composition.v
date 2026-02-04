@@ -246,7 +246,8 @@ pub fn is_dead_key(r rune) bool {
 // handle_marked_text processes setMarkedText from IME overlay.
 // Called from C callback, updates preedit_text and cursor_offset.
 // Starts composition if not already active.
-pub fn (mut cs CompositionState) handle_marked_text(text string, cursor_in_preedit int, document_cursor int) {
+pub fn (mut cs CompositionState) handle_marked_text(text string, cursor_in_preedit int,
+	document_cursor int) {
 	if !cs.is_composing() {
 		cs.start(document_cursor)
 	}

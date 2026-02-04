@@ -1,3 +1,11 @@
+// crisp_demo.v demonstrates high-DPI text sharpness verification.
+//
+// Features shown:
+// - Text rendering at small sizes (10-24px)
+// - DPI-aware scaling for crisp rendering
+// - Visual quality inspection across size range
+//
+// Run: v run examples/crisp_demo.v
 module main
 
 import vglyph

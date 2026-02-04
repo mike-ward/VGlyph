@@ -120,10 +120,17 @@ $if profile ? {
 		println('  Total:     ${total_ns / 1000} us')
 		glyph_total := m.glyph_cache_hits + m.glyph_cache_misses
 		layout_total := m.layout_cache_hits + m.layout_cache_misses
-		println('Glyph Cache: ${m.glyph_cache_hit_rate():.1}% (${m.glyph_cache_hits}/${glyph_total}), ${m.glyph_cache_evictions} evictions')
-		println('Layout Cache: ${m.layout_cache_hit_rate():.1}% (${m.layout_cache_hits}/${layout_total})')
-		println('Atlas: ${m.atlas_page_count} pages, ${m.atlas_utilization():.1}% utilized (${m.atlas_used_pixels}/${m.atlas_total_pixels} px)')
-		println('Memory: ${m.current_atlas_bytes / 1024} KB current, ${m.peak_atlas_bytes / 1024} KB peak')
+		rate1 := m.glyph_cache_hit_rate()
+		rate2 := m.layout_cache_hit_rate()
+		util := m.atlas_utilization()
+		println('Glyph Cache: ${rate1:.1}% (${m.glyph_cache_hits}/${glyph_total}), ' +
+			'${m.glyph_cache_evictions} evictions')
+		println('Layout Cache: ${rate2:.1}% (${m.layout_cache_hits}/${layout_total})')
+		println('Atlas: ${m.atlas_page_count} pages, ${util:.1}% utilized ' +
+			'(${m.atlas_used_pixels}/${m.atlas_total_pixels} px)')
+		cur_kb := m.current_atlas_bytes / 1024
+		peak_kb := m.peak_atlas_bytes / 1024
+		println('Memory: ${cur_kb} KB current, ${peak_kb} KB peak')
 	}
 }
 
@@ -149,19 +156,24 @@ pub mut:
 //
 // Keep context alive for application duration. Passing this to `layout_text`
 // shares the font cache.
+//
+// Returns error if:
+// - FreeType library initialization fails
+// - Pango font map creation fails
+// - Pango context creation fails
 pub fn new_context(scale_factor f32) !&Context {
 	// Initialize pointer to null
 	ft_lib := &C.FT_LibraryRec(unsafe { nil })
 	if C.FT_Init_FreeType(&ft_lib) != 0 {
-		log.error('${@FILE_LINE}: Failed to initialize FreeType library')
-		return error('Failed to initialize FreeType library')
+		log.error('${@FILE_LINE}: failed to initialize FreeType library')
+		return error('failed to initialize FreeType library')
 	}
 
 	pango_font_map := C.pango_ft2_font_map_new()
 	if voidptr(pango_font_map) == unsafe { nil } {
 		C.FT_Done_FreeType(ft_lib)
-		log.error('${@FILE_LINE}: Failed to create Pango Font Map')
-		return error('Failed to create Pango Font Map')
+		log.error('${@FILE_LINE}: failed to create Pango font map')
+		return error('failed to create Pango font map')
 	}
 	// Set default resolution to 72 DPI * scale_factor.
 	// This ensures that 1 pt == 1 px (logical).
@@ -172,8 +184,8 @@ pub fn new_context(scale_factor f32) !&Context {
 	if voidptr(pango_context) == unsafe { nil } {
 		C.g_object_unref(pango_font_map)
 		C.FT_Done_FreeType(ft_lib)
-		log.error('${@FILE_LINE}: Failed to create Pango Context')
-		return error('Failed to create Pango Context')
+		log.error('${@FILE_LINE}: failed to create Pango context')
+		return error('failed to create Pango context')
 	}
 
 	// Auto-register system fonts on macOS
@@ -206,6 +218,7 @@ pub fn new_context(scale_factor f32) !&Context {
 	}
 }
 
+// free releases Pango context, font map, and FreeType library resources.
 pub fn (mut ctx Context) free() {
 	if voidptr(ctx.pango_context) != unsafe { nil } {
 		C.g_object_unref(ctx.pango_context)
@@ -219,8 +232,12 @@ pub fn (mut ctx Context) free() {
 }
 
 // add_font_file loads a font file from the given path to the Pango context.
-// Returns true if successful. Uses FontConfig to register application font.
-pub fn (mut ctx Context) add_font_file(path string) bool {
+// Uses FontConfig to register application font.
+//
+// Returns error if:
+// - FontConfig initialization fails
+// - FcConfigAppFontAddFile fails (invalid font file format)
+pub fn (mut ctx Context) add_font_file(path string) ! {
 	// Retrieve current FontConfig configuration. Pango uses this by default.
 	// Explicit initialization ensures safety when modifying.
 	mut config := C.FcConfigGetCurrent()
@@ -228,38 +245,43 @@ pub fn (mut ctx Context) add_font_file(path string) bool {
 		// Fallback: Initialize config if not currently available.
 		config = C.FcInitLoadConfigAndFonts()
 		if config == unsafe { nil } {
-			log.error('${@FILE_LINE}: FcConfigGetCurrent failed')
-			return false
+			return error('fontconfig initialization failed at ${@FILE}:${@LINE}')
 		}
 	}
 
 	res := C.FcConfigAppFontAddFile(config, &char(path.str))
-	if res == 1 {
-		C.pango_fc_font_map_config_changed(ctx.pango_font_map)
-		return true
+	if res != 1 {
+		return error('FcConfigAppFontAddFile() failed for "${path}" at ${@FILE}:${@LINE}')
 	}
-	return false
+	C.pango_fc_font_map_config_changed(ctx.pango_font_map)
 }
 
 // font_height returns the total visual height (ascent + descent) of the font
 // described by cfg.
-pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
+//
+// Returns error if:
+// - font description creation fails (invalid font name)
+// - font loading fails (font not found)
+// - FreeType face unavailable from Pango font
+// - font metrics unavailable
+pub fn (mut ctx Context) font_height(cfg TextConfig) !f32 {
 	desc := ctx.create_font_description(cfg.style)
 	if desc == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to create Pango Font Description')
-		return 0
+		return error('failed to create Pango font description at ${@FILE}:${@LINE}')
 	}
 	defer { C.pango_font_description_free(desc) }
 
 	// Load font to get FT_Face for cache key
 	font := C.pango_context_load_font(ctx.pango_context, desc)
 	if font == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to load Pango Font')
-		return 0
+		return error('failed to load Pango font at ${@FILE}:${@LINE}')
 	}
 	defer { C.g_object_unref(font) }
 
 	face := C.pango_ft2_font_get_face(font)
+	if face == unsafe { nil } {
+		return error('FreeType face unavailable from Pango font at ${@FILE}:${@LINE}')
+	}
 	size_units := C.pango_font_description_get_size(desc)
 	cache_key := u64(voidptr(face)) ^ (u64(size_units) << 32)
 
@@ -272,8 +294,7 @@ pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
 	language := C.pango_language_get_default()
 	metrics := C.pango_font_get_metrics(font, language)
 	if metrics == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to get Pango Font Metrics')
-		return 0
+		return error('failed to get Pango font metrics at ${@FILE}:${@LINE}')
 	}
 	defer { C.pango_font_metrics_unref(metrics) }
 
@@ -293,23 +314,30 @@ pub fn (mut ctx Context) font_height(cfg TextConfig) f32 {
 
 // font_metrics returns detailed metrics for the font, including ascender, descender,
 // and line gap. All values are in pixels.
-pub fn (mut ctx Context) font_metrics(cfg TextConfig) TextMetrics {
+//
+// Returns error if:
+// - font description creation fails (invalid font name)
+// - font loading fails (font not found)
+// - FreeType face unavailable from Pango font
+// - font metrics unavailable
+pub fn (mut ctx Context) font_metrics(cfg TextConfig) !TextMetrics {
 	desc := ctx.create_font_description(cfg.style)
 	if desc == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to create Pango Font Description')
-		return TextMetrics{}
+		return error('failed to create Pango font description at ${@FILE}:${@LINE}')
 	}
 	defer { C.pango_font_description_free(desc) }
 
 	// Load font to get FT_Face for cache key
 	font := C.pango_context_load_font(ctx.pango_context, desc)
 	if font == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to load Pango Font')
-		return TextMetrics{}
+		return error('failed to load Pango font at ${@FILE}:${@LINE}')
 	}
 	defer { C.g_object_unref(font) }
 
 	face := C.pango_ft2_font_get_face(font)
+	if face == unsafe { nil } {
+		return error('FreeType face unavailable from Pango font at ${@FILE}:${@LINE}')
+	}
 	size_units := C.pango_font_description_get_size(desc)
 	cache_key := u64(voidptr(face)) ^ (u64(size_units) << 32)
 
@@ -331,8 +359,7 @@ pub fn (mut ctx Context) font_metrics(cfg TextConfig) TextMetrics {
 	language := C.pango_language_get_default()
 	metrics := C.pango_font_get_metrics(font, language)
 	if metrics == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to get Pango Font Metrics')
-		return TextMetrics{}
+		return error('failed to get Pango font metrics at ${@FILE}:${@LINE}')
 	}
 	defer { C.pango_font_metrics_unref(metrics) }
 
@@ -359,10 +386,15 @@ pub fn (mut ctx Context) font_metrics(cfg TextConfig) TextMetrics {
 
 // resolve_font_name returns the actual font family name that Pango resolves
 // for the given font description string. Useful for debugging system font loading.
-pub fn (mut ctx Context) resolve_font_name(font_desc_str string) string {
+//
+// Returns error if:
+// - font description string is invalid
+// - font loading fails (font not found)
+// - FreeType face unavailable from Pango font
+pub fn (mut ctx Context) resolve_font_name(font_desc_str string) !string {
 	desc := C.pango_font_description_from_string(font_desc_str.str)
 	if desc == unsafe { nil } {
-		return 'Error: Invalid font description'
+		return error('invalid font description "${font_desc_str}" at ${@FILE}:${@LINE}')
 	}
 	defer { C.pango_font_description_free(desc) }
 
@@ -374,25 +406,26 @@ pub fn (mut ctx Context) resolve_font_name(font_desc_str string) string {
 
 	font := C.pango_context_load_font(ctx.pango_context, desc)
 	if font == unsafe { nil } {
-		return 'Error: Could not load font'
+		return error('could not load font "${font_desc_str}" at ${@FILE}:${@LINE}')
 	}
 	defer { C.g_object_unref(font) }
 
 	// Get the FT_Face from the Pango font (specific to pangoft2 backend)
 	face := C.pango_ft2_font_get_face(font)
 	if face == unsafe { nil } {
-		return 'Error: Could not get FT_Face'
+		return error('could not get FT_Face for "${font_desc_str}" at ${@FILE}:${@LINE}')
 	}
 
 	return unsafe { cstring_to_vstring(face.family_name) }
 }
 
+// resolve_font_alias resolves font name aliases and appends platform fallbacks.
 pub fn resolve_font_alias(name string) string {
 	// Parse the font description string into a Pango object.
 	// This safely handles complex strings like "Sans Bold 17px" without us resolving it manually.
 	desc := C.pango_font_description_from_string(name.str)
 	if desc == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to create Pango Font Description')
+		log.error('${@FILE_LINE}: failed to create Pango font description')
 		return name
 	}
 	defer { C.pango_font_description_free(desc) }
@@ -407,11 +440,11 @@ pub fn resolve_font_alias(name string) string {
 	// Set the modified family list back to the description
 	C.pango_font_description_set_family(desc, resolved_fam.str)
 
-	// Serialize the description back to a string (Pango handles the formatting: "Family List Size Style")
-	// Note: Pango might strip some information here, which is why we prefer using `desc` directly in other functions.
+	// Serialize description back to string (Pango handles formatting: "Family List Size Style")
+	// Note: Pango might strip info; prefer using `desc` directly in other functions.
 	new_str_ptr := C.pango_font_description_to_string(desc)
 	if new_str_ptr == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to serialize Pango Font Description')
+		log.error('${@FILE_LINE}: failed to serialize Pango font description')
 		return name // Should not happen
 	}
 	final_name := unsafe { cstring_to_vstring(new_str_ptr) }
@@ -428,7 +461,7 @@ fn resolve_family_alias(fam string) string {
 		new_fam += ', Segoe UI'
 	} $else {
 		// On Linux/BSD, we trust FontConfig to handle aliases (e.g. Sans -> Noto Sans).
-		// however, we append 'Sans' to ensuring that we always have a sans-serif fallback if the requested font is missing.
+		// Append 'Sans' to ensure sans-serif fallback if the requested font is missing.
 		new_fam += ', Sans'
 	}
 	return new_fam.trim(', ')

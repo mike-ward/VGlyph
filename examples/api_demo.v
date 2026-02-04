@@ -1,3 +1,11 @@
+// api_demo.v demonstrates TextSystem immediate-mode API.
+//
+// Features shown:
+// - draw_text() immediate rendering
+// - text_width() and text_height() measurement
+// - Pango markup support
+//
+// Run: v run examples/api_demo.v
 module main
 
 import gg

@@ -1,3 +1,11 @@
+// subpixel_animation.v demonstrates smooth subpixel positioning in motion.
+//
+// Features shown:
+// - Subpixel-accurate x positioning (smooth motion)
+// - Comparison with integer-snapped positioning (jittery)
+// - Slow animation to visualize subpixel precision
+//
+// Run: v run examples/subpixel_animation.v
 module main
 
 import vglyph

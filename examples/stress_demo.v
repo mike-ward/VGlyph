@@ -1,3 +1,13 @@
+// stress_demo.v demonstrates performance stress testing with 6000 glyphs.
+//
+// This is a development tool for atlas performance testing.
+//
+// Features shown:
+// - Large glyph count rendering (6000 characters)
+// - Viewport culling optimization
+// - Scrolling performance measurement
+//
+// Run: v run examples/stress_demo.v
 module main
 
 import gg

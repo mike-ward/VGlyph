@@ -1,17 +1,20 @@
+// showcase.v demonstrates comprehensive vglyph feature gallery.
+//
+// Features shown:
+// - Typography (fonts, weights, ligatures)
+// - Layout (wrapping, alignment, hanging indents)
+// - Rich text and markup
+// - Internationalization (complex scripts, emoji)
+// - OpenType features (variable fonts, subscripts)
+// - Subpixel rendering and hit testing
+//
+// Run: v run examples/showcase.v
 module main
 
 import gg
 import vglyph
 import math
 import os
-
-// =============================================================================
-// VGlyph Showcase ShowcaseApplication
-// -----------------------------------------------------------------------------
-// This application demonstrates the capabilities of the vglyph text rendering
-// library. It serves as both a visual gallery and a code reference for
-// developers.
-// =============================================================================
 
 const window_width = 1000
 const window_height = 800
@@ -103,8 +106,8 @@ fn init(mut app ShowcaseApp) {
 
 	// Example: Loading a local font file
 	// We load 'feathericon.ttf' from the assets folder.
-	if !app.ts.add_font_file(os.join_path('${@VMODROOT}', 'assets/feathericon.ttf')) {
-		println('Failed to load font file: assets/feathericon.ttf')
+	app.ts.add_font_file(os.join_path('${@VMODROOT}', 'assets/feathericon.ttf')) or {
+		println('Failed to load font file: ${err}')
 	}
 
 	// Create our showcase content

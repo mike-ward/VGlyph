@@ -7,7 +7,8 @@ import accessibility
 // update_accessibility takes a Layout and converts it into accessibility nodes,
 // essentially "publishing" the visual structure to the screen reader.
 // This accumulates nodes for the current frame. Call am.commit() to push changes.
-pub fn update_accessibility(mut am accessibility.AccessibilityManager, l Layout, origin_x f32, origin_y f32) {
+pub fn update_accessibility(mut am accessibility.AccessibilityManager, l Layout, origin_x f32,
+	origin_y f32) {
 	// Process Lines
 	for line in l.lines {
 		// Only create nodes for lines that have content

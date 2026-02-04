@@ -1,3 +1,13 @@
+// atlas_resize_debug.v demonstrates atlas dynamic resizing.
+//
+// This is a development tool for verifying atlas growth behavior.
+//
+// Features shown:
+// - Small atlas initialization (128x128)
+// - Forced resizing via bitmap insertion
+// - Height tracking before/after resize
+//
+// Run: v run examples/atlas_resize_debug.v
 module main
 
 import vglyph

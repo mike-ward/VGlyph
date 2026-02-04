@@ -1,3 +1,11 @@
+// variable_font_demo.v demonstrates variable font axis animation.
+//
+// Features shown:
+// - Variable font axes (wght weight, wdth width)
+// - Animated axis value changes
+// - Custom font file loading (RobotoFlex)
+//
+// Run: v run examples/variable_font_demo.v
 module main
 
 import vglyph
@@ -66,7 +74,7 @@ fn (mut app VariableFontApp) draw() {
 	// Load Variable Font from file if available, otherwise fallback to system "Sans"
 	// User can download Roboto Flex from Google Fonts.
 	font_path := 'assets/RobotoFlex.ttf'
-	app.text_system.add_font_file(font_path)
+	app.text_system.add_font_file(font_path) or {}
 
 	// Variable Text
 	var_cfg := vglyph.TextConfig{

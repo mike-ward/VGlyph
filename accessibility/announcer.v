@@ -23,6 +23,7 @@ mut:
 	last_line              int = -1  // Track line changes
 }
 
+// new_accessibility_announcer creates an announcer with default debounce settings.
 pub fn new_accessibility_announcer() AccessibilityAnnouncer {
 	return AccessibilityAnnouncer{}
 }

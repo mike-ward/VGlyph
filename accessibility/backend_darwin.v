@@ -51,7 +51,8 @@ fn (mut b DarwinAccessibilityBackend) update_tree(nodes map[int]AccessibilityNod
 			// Set Frame (Commented out)
 			/*
 			win_frame := get_window_frame(window)
-			screen_y := win_frame.origin.y + win_frame.size.height - f64(node.rect.y) - f64(node.rect.height)
+			h := win_frame.size.height - f64(node.rect.y) - f64(node.rect.height)
+			screen_y := win_frame.origin.y + h
 				
 			ns_rect := make_ns_rect(
 				f32(win_frame.origin.x + f64(node.rect.x)),
@@ -137,7 +138,8 @@ fn (mut b DarwinAccessibilityBackend) set_focus(node_id int) {
 	// TODO
 }
 
-fn (mut b DarwinAccessibilityBackend) post_notification(node_id int, notification AccessibilityNotification) {
+fn (mut b DarwinAccessibilityBackend) post_notification(node_id int,
+	notification AccessibilityNotification) {
 	// TODO: NSAccessibility notifications require element attached to window
 	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
 	// Full NSAccessibility integration deferred to future work
@@ -145,7 +147,8 @@ fn (mut b DarwinAccessibilityBackend) post_notification(node_id int, notificatio
 	_ = notification
 }
 
-fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value string, selected_range Range, cursor_line int) {
+fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value string,
+	selected_range Range, cursor_line int) {
 	// TODO: NSAccessibility element integration requires window attachment
 	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
 	// Full NSAccessibility integration deferred to future work

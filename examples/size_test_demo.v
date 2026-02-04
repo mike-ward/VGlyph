@@ -1,3 +1,13 @@
+// size_test_demo.v demonstrates font size override behavior testing.
+//
+// This is a development tool for verifying size field priority over font_name size.
+//
+// Features shown:
+// - Size field override testing
+// - Fractional font sizes
+// - RichText per-run size testing
+//
+// Run: v run examples/size_test_demo.v
 module main
 
 import vglyph
@@ -13,7 +23,7 @@ fn check_font_size_override() {
 			size:      0
 		}
 	}
-	height_small := ctx.font_height(cfg_small)
+	height_small := ctx.font_height(cfg_small) or { panic(err) }
 	println('Height Small (10pt): ${height_small}')
 
 	// Case 2: Size in font name overridden by size field
@@ -23,7 +33,7 @@ fn check_font_size_override() {
 			size:      20.0
 		}
 	}
-	height_large := ctx.font_height(cfg_large)
+	height_large := ctx.font_height(cfg_large) or { panic(err) }
 	println('Height Large (20pt): ${height_large}')
 
 	if height_large > height_small {
@@ -39,7 +49,7 @@ fn check_font_size_override() {
 			size:      15.5
 		}
 	}
-	height_fractional := ctx.font_height(cfg_fractional)
+	height_fractional := ctx.font_height(cfg_fractional) or { panic(err) }
 	println('Height Fractional (15.5pt): ${height_fractional}')
 
 	if height_fractional > height_small && height_fractional < height_large {

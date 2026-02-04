@@ -62,6 +62,10 @@ pub fn check_attr_list_leaks() {
 //   lifecycle from Pango.
 // - **Color**: Manually map Pango attrs to `gg.Color` for rendering. Pango
 //   attaches colors as metadata, not to glyphs directly.
+//
+// Returns error if:
+// - text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - Pango layout creation fails
 pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 	$if profile ? {
 		start := time.sys_mono_now()
@@ -72,6 +76,9 @@ pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 	if text.len == 0 {
 		return Layout{}
 	}
+
+	// Defensive UTF-8 validation (API boundary validates, this is defense-in-depth)
+	validate_text_input(text, max_text_length, @FN)!
 
 	layout := setup_pango_layout(mut ctx, text, cfg) or {
 		log.error('${@FILE_LINE}: ${err.msg()}')
@@ -85,6 +92,10 @@ pub fn (mut ctx Context) layout_text(text string, cfg TextConfig) !Layout {
 // layout_rich_text layouts text with multiple styles (RichText).
 // It combines the base configuration (cfg) with per-run style overrides.
 // It concatenates the text from all runs to form the full paragraph.
+//
+// Returns error if:
+// - any run's text is empty, exceeds max length (10KB), or contains invalid UTF-8
+// - Pango layout creation fails
 pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 	$if profile ? {
 		start := time.sys_mono_now()
@@ -94,6 +105,11 @@ pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 	}
 	if rt.runs.len == 0 {
 		return Layout{}
+	}
+
+	// Defensive validation of each run's text (defense-in-depth)
+	for run in rt.runs {
+		validate_text_input(run.text, max_text_length, @FN)!
 	}
 
 	// 1. Build Full Text and Calculate Indices
@@ -168,7 +184,14 @@ pub fn (mut ctx Context) layout_rich_text(rt RichText, cfg TextConfig) !Layout {
 }
 
 // build_layout_from_pango extracts V Items, Lines, and Rects from a configured PangoLayout.
-fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32, cfg TextConfig) Layout {
+//
+// Memory bounds (implicit limits from text validation):
+// - char_rects: <= text.len entries (capped at max_text_length = 10KB)
+// - items: <= number of Pango runs (typically < 100 for mixed-style text)
+// - all_glyphs: <= text.len * max_glyphs_per_char (~2x text.len for complex scripts)
+// V arrays handle allocation and bounds checking automatically.
+fn build_layout_from_pango(layout &C.PangoLayout, text string, scale_factor f32,
+	cfg TextConfig) Layout {
 	// Iterator lifecycle:
 	// 1. Create via pango_layout_get_iter (caller owns)
 	// 2. Iterate with next_run/next_char/next_line until returns false
@@ -379,6 +402,9 @@ fn extract_log_attrs(layout &C.PangoLayout, text string) LogAttrResult {
 
 // setup_pango_layout creates and configures a new PangoLayout object.
 // It applies text, markup, wrapping, alignment, and font settings.
+//
+// Returns error if:
+// - pango_layout_new returns null (memory allocation failure)
 fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLayout {
 	// Configure Context Gravity/Orientation
 	// We must set this on the context before creating the layout, or call context_changed().
@@ -397,8 +423,8 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 
 	layout := C.pango_layout_new(ctx.pango_context)
 	if layout == unsafe { nil } {
-		log.error('${@FILE_LINE}: Failed to create Pango Layout')
-		return error('Failed to create Pango Layout')
+		log.error('${@FILE_LINE}: failed to create Pango layout')
+		return error('failed to create Pango layout')
 	}
 
 	if cfg.use_markup {
@@ -601,7 +627,8 @@ pub mut:
 
 // get_run_metrics fetches metrics (position, thickness) for active decorations
 // (underline, strikethrough) using Pango API.
-fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage, attrs RunAttributes) RunMetrics {
+fn get_run_metrics(pango_font &C.PangoFont, language &C.PangoLanguage,
+	attrs RunAttributes) RunMetrics {
 	mut m := RunMetrics{}
 	if attrs.has_underline || attrs.has_strikethrough {
 		metrics := C.pango_font_get_metrics(pango_font, language)
@@ -648,7 +675,8 @@ struct ProcessRunConfig {
 // process_run converts a single Pango glyph run into a V `Item`.
 // Handles attribute parsing, metric calculation, and glyph extraction.
 // Returns the updated vertical pen position (for vertical text stacking).
-fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64, cfg ProcessRunConfig) f64 {
+fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64,
+	cfg ProcessRunConfig) f64 {
 	run := cfg.run
 	iter := cfg.iter
 	text := cfg.text
@@ -695,8 +723,8 @@ fn process_run(mut items []Item, mut all_glyphs []Glyph, vertical_pen_y f64, cfg
 	// Detect if this is an emoji run
 	fam_name := unsafe { cstring_to_vstring(ft_face.family_name) } // Assumes ft_face is valid
 	if fam_name.contains('Emoji') && primary_ascent > 0 {
-		// Logic: Align the visual center of the emoji with the approximate x-height center of the primary font.
-		// "Raised" appearance comes from aligning to full ascent (which includes accents/line gap).
+		// Logic: Align emoji visual center with approximate x-height center of primary font.
+		// "Raised" look comes from aligning to full ascent (includes accents/line gap).
 		// CSS `vertical-align: middle` aligns with `baseline + x-height / 2`.
 		//
 		// Approx X-Height = 0.5 * PrimaryAscent
@@ -1022,13 +1050,15 @@ fn init_vertical_pen_vertical(primary_ascent f64) f64 {
 
 // compute_glyph_transform_horizontal returns glyph offsets/advances unchanged.
 // Horizontal text uses Pango values directly.
-fn compute_glyph_transform_horizontal(x_off f64, y_off f64, x_adv f64, y_adv f64) (f64, f64, f64, f64) {
+fn compute_glyph_transform_horizontal(x_off f64, y_off f64, x_adv f64,
+	y_adv f64) (f64, f64, f64, f64) {
 	return x_off, y_off, x_adv, y_adv
 }
 
 // compute_glyph_transform_vertical transforms glyph for vertical stacking.
 // Centers glyph horizontally in column, sets vertical advance to line_height.
-fn compute_glyph_transform_vertical(x_off f64, y_off f64, x_adv f64, y_adv f64, line_height f64) (f64, f64, f64, f64) {
+fn compute_glyph_transform_vertical(x_off f64, y_off f64, x_adv f64, y_adv f64,
+	line_height f64) (f64, f64, f64, f64) {
 	// x_offset = center glyph in column: (line_height - char_width) / 2
 	// y_offset = preserve vertical baseline shift
 	// x_advance = 0 (no horizontal movement)
@@ -1047,7 +1077,8 @@ fn compute_run_position_horizontal(run_x f64, run_y f64, vertical_pen_y f64) (f6
 
 // compute_run_position_vertical transforms run position for vertical stacking.
 // Swaps X/Y baselines and updates vertical pen position.
-fn compute_run_position_vertical(run_x f64, run_y f64, vertical_pen_y f64, line_height f64, glyph_count int) (f64, f64, f64) {
+fn compute_run_position_vertical(run_x f64, run_y f64, vertical_pen_y f64, line_height f64,
+	glyph_count int) (f64, f64, f64) {
 	// final_run_x = run_y (horizontal baseline -> vertical X position)
 	// final_run_y = vertical_pen_y (cumulative vertical stack position)
 	_ = run_x // Unused in vertical mode
@@ -1057,7 +1088,8 @@ fn compute_run_position_vertical(run_x f64, run_y f64, vertical_pen_y f64, line_
 
 // compute_dimensions_horizontal returns layout dimensions for horizontal text.
 // Uses Pango ink rect directly.
-fn compute_dimensions_horizontal(ink_width f32, ink_height f32, pango_scale f32, scale_factor f32) (f32, f32) {
+fn compute_dimensions_horizontal(ink_width f32, ink_height f32, pango_scale f32,
+	scale_factor f32) (f32, f32) {
 	return (ink_width / pango_scale) / scale_factor, (ink_height / pango_scale) / scale_factor
 }
 
@@ -1070,7 +1102,8 @@ fn compute_dimensions_vertical(line_height f32, vertical_pen_y f32) (f32, f32) {
 // apply_rich_text_style modifies a caller-owned AttrList.
 // Caller retains ownership; this function only inserts attributes.
 // Attributes inserted become owned by the list (don't free them separately).
-fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle, start int, end int, mut cloned_ids []string) {
+fn apply_rich_text_style(mut ctx Context, list &C.PangoAttrList, style TextStyle, start int,
+	end int, mut cloned_ids []string) {
 	// 1. Color
 	if style.color.a > 0 {
 		mut attr := C.pango_attr_foreground_new(u16(style.color.r) << 8, u16(style.color.g) << 8,

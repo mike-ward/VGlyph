@@ -1,3 +1,13 @@
+// check_system_fonts.v demonstrates system font enumeration utility.
+//
+// This is a development tool for verifying font resolution on your system.
+//
+// Features shown:
+// - resolve_font_name() for system fonts
+// - Requested vs. resolved font comparison
+// - Visual font fallback detection
+//
+// Run: v run examples/check_system_fonts.v
 module main
 
 import gg
@@ -67,9 +77,10 @@ fn init(mut app AppSystemFonts) {
 	]
 
 	for f in fonts {
-		resolved := check_ctx.resolve_font_name(f)
-		success := resolved.to_lower().contains(f.to_lower()) || (f == '.AppleSystemUIFont' && resolved != '') || // Special case if needed, but likely fails
-		 (f.starts_with('SF') && resolved.starts_with('SF'))
+		resolved := check_ctx.resolve_font_name(f) or { '' }
+		success := resolved.to_lower().contains(f.to_lower())
+			|| (f == '.AppleSystemUIFont' && resolved != '')
+			|| (f.starts_with('SF') && resolved.starts_with('SF'))
 
 		// Strict check: if it fell back to Verdana (common fallback) or something else
 		// We'll mark it visually.

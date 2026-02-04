@@ -36,10 +36,12 @@ fn C.v_msgSend_setFrame(self Id, op SEL, rect C.NSRect)
 fn C.v_msgSend_void_id(self Id, op SEL, arg1 voidptr)
 fn C.v_msgSend_str(self Id, op SEL, str &char) Id
 
+// objc_get_class returns the Objective-C class object for the named class.
 pub fn objc_get_class(name string) Class {
 	return C.v_objc_getClass(name.str)
 }
 
+// sel_register_name registers a selector name and returns its SEL handle.
 pub fn sel_register_name(name string) SEL {
 	return C.v_sel_registerName(name.str)
 }
@@ -73,6 +75,7 @@ pub mut:
 	length   u64
 }
 
+// make_ns_rect creates an NSRect from float coordinates.
 pub fn make_ns_rect(x f32, y f32, w f32, h f32) C.NSRect {
 	return C.NSRect{
 		origin: C.CGPoint{
@@ -101,6 +104,7 @@ pub fn ns_mutable_array_new() Id {
 	return C.v_msgSend_0(alloc, C.v_sel_registerName(c'init'))
 }
 
+// ns_array_add_object appends an object to an NSMutableArray.
 pub fn ns_array_add_object(arr Id, obj Id) {
 	C.v_msgSend(arr, C.v_sel_registerName(c'addObject:'), obj)
 }
@@ -117,6 +121,7 @@ pub fn make_ns_range(location int, length int) C.NSRange {
 fn C.v_NSAccessibilityPostNotification(element Id, notification Id)
 fn C.v_NSAccessibilityAnnounce(message &char)
 
+// post_accessibility_notification posts a named notification for an element.
 pub fn post_accessibility_notification(element Id, notification string) {
 	notif_ns := ns_string(notification)
 	C.v_NSAccessibilityPostNotification(element, notif_ns)

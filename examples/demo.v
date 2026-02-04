@@ -1,3 +1,12 @@
+// demo.v demonstrates multilingual text rendering and hit testing.
+//
+// Features shown:
+// - Multilingual text (Arabic, Japanese, Korean, emoji)
+// - Text wrapping and alignment
+// - Pango markup (bold, underline, color)
+// - Hit testing for cursor positioning
+//
+// Run: v run examples/demo.v
 module main
 
 import gg

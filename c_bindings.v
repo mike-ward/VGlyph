@@ -321,7 +321,7 @@ pub mut:
 	gravity                PangoGravity
 	variations             &char
 	mask                   u16 // PangoFontMask
-	static_and_is_abs_size u32 // Bitfields: static_family (1), static_variations (1), size_is_absolute (1)
+	static_and_is_abs_size u32 // Bitfields: static_family, static_variations, size_is_absolute
 	size                   int
 }
 
@@ -572,7 +572,8 @@ fn C.pango_font_description_get_size(&C.PangoFontDescription) int
 fn C.pango_font_description_get_size_is_absolute(&C.PangoFontDescription) bool
 fn C.pango_font_description_get_set_fields(&C.PangoFontDescription) u16
 fn C.pango_layout_get_context(&C.PangoLayout) &C.PangoContext
-fn C.pango_context_get_metrics(&C.PangoContext, &C.PangoFontDescription, &C.PangoLanguage) &C.PangoFontMetrics
+fn C.pango_context_get_metrics(&C.PangoContext, &C.PangoFontDescription,
+	&C.PangoLanguage) &C.PangoFontMetrics
 fn C.pango_context_load_font(&C.PangoContext, &C.PangoFontDescription) &C.PangoFont
 fn C.pango_context_changed(&C.PangoContext)
 fn C.pango_font_metrics_get_approximate_char_width(&C.PangoFontMetrics) int
@@ -722,13 +723,15 @@ type IMEUnmarkTextCallback = fn (user_data voidptr)
 type IMEBoundsCallback = fn (user_data voidptr, x &f32, y &f32, width &f32, height &f32) bool
 
 // C functions implemented by ime_bridge_macos.m
-fn C.vglyph_ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback, unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr)
+fn C.vglyph_ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback,
+	unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr)
 fn C.vglyph_ime_did_handle_key() bool
 fn C.vglyph_ime_has_marked_text() bool
 
 // ime_register_callbacks wraps the C function for use from other modules.
 // Registers callbacks that the native IME bridge will call when IME events occur.
-pub fn ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback, unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr) {
+pub fn ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback,
+	unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr) {
 	$if darwin {
 		C.vglyph_ime_register_callbacks(marked, insert, unmark, bounds, user_data)
 	}
@@ -786,6 +789,7 @@ pub fn ime_overlay_create(mtk_view voidptr) voidptr {
 	return C.vglyph_create_ime_overlay(mtk_view)
 }
 
+// ime_overlay_set_focused_field sets the currently focused text field for IME routing.
 pub fn ime_overlay_set_focused_field(handle voidptr, field_id string) {
 	if field_id.len > 0 {
 		C.vglyph_set_focused_field(handle, field_id.str)
@@ -794,6 +798,7 @@ pub fn ime_overlay_set_focused_field(handle voidptr, field_id string) {
 	}
 }
 
+// ime_overlay_free releases the IME overlay and associated resources.
 pub fn ime_overlay_free(handle voidptr) {
 	C.vglyph_overlay_free(handle)
 }

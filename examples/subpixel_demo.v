@@ -1,3 +1,11 @@
+// subpixel_demo.v demonstrates LCD subpixel antialiasing quality.
+//
+// Features shown:
+// - Subpixel antialiasing across multiple font sizes
+// - Color text rendering with RGB subpixel layout
+// - Comparison of antialiasing at small sizes
+//
+// Run: v run examples/subpixel_demo.v
 module main
 
 import vglyph
