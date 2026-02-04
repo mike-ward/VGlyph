@@ -5,37 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** v1.4 CJK IME complete — ready for next milestone
+**Current focus:** v1.5 Codebase Quality Audit
 
 ## Current Position
 
-Phase: 21 of 21 (all v1.4 phases complete)
-Plan: All complete
-Status: v1.4 CJK IME milestone SHIPPED
-Last activity: 2026-02-04 — Milestone complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-04 — Milestone v1.5 started
 
-Progress: ██████████████████████████████ 36/36 plans
-
-## Milestone Summary
-
-**v1.4 CJK IME — SHIPPED 2026-02-04**
-
-| IME | Status |
-|-----|--------|
-| Japanese | PASS |
-| Chinese | PASS |
-| Korean | Partial (first-keypress issue*) |
-
-*macOS-level bug: Qt QTBUG-136128, Apple FB17460926, Alacritty #6942
-
-## Performance Metrics
-
-Latest profiled build metrics:
-- Glyph cache: 4096 entries (LRU eviction)
-- Metrics cache: 256 entries (LRU eviction)
-- Atlas: Multi-page (4 max), LRU page eviction
-- Layout cache: TTL-based eviction
-- Frame timing: instrumented via `-d profile`
+Progress: ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 0/0 plans
 
 ## Accumulated Context
 
@@ -64,6 +43,6 @@ handle. Multi-field apps need native handle access.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: v1.4 milestone complete
+Stopped at: v1.5 milestone started
 Resume file: None
-Resume command: `/gsd:new-milestone` to start v1.5
+Resume command: `/gsd:plan-phase 22`

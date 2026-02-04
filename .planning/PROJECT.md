@@ -60,7 +60,25 @@ Reliable text rendering without crashes or undefined behavior.
 
 ### Active
 
-(No active requirements — milestone complete)
+**v1.5 Codebase Quality Audit:**
+- [ ] Security audit (input validation, memory safety, error handling)
+- [ ] Code consistency (naming, patterns, style)
+- [ ] File organization (logical module boundaries, test convention `_*.v`)
+- [ ] Documentation sync (comments, README, API docs match implementation)
+- [ ] Test verification (all tests pass, fix broken ones unless test is wrong)
+- [ ] Example cleanup (all examples have descriptive header comments)
+
+## Current Milestone: v1.5 Codebase Quality Audit
+
+**Goal:** Security-first audit of entire codebase with thorough review, refactoring as needed, and
+verification pass for clean bill of health.
+
+**Target features:**
+- Security audit: input validation, memory safety, error handling paths
+- Code consistency: naming conventions, patterns, file organization
+- Documentation sync: comments match code, README current, examples documented
+- Test verification: all tests pass, no regressions
+- Clean bill of health: audit + fixes + verification pass
 
 ### Out of Scope
 - Shelf packing allocator — future optimization
@@ -126,5 +144,5 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
 | Korean first-keypress workarounds | macOS-level bug | Partial - upstream issue |
 
 ---
-*Last updated: 2026-02-04 after v1.4 milestone complete*
+*Last updated: 2026-02-04 after v1.5 milestone start*
 *Korean first-keypress: Qt QTBUG-136128, Apple FB17460926, Alacritty #6942*
