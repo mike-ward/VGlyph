@@ -186,16 +186,9 @@
 
 #pragma mark - Key Forwarding (Phase 20: Korean IME support)
 
-- (void)keyDown:(NSEvent*)event {
-    // When composing, forward ALL keys to IME for proper handling
-    // This enables Korean jamo decomposition on backspace
-    if ([self hasMarkedText]) {
-        [self interpretKeyEvents:@[event]];
-    }
-    // When not composing, do nothing - sokol captures events separately
-    // through NSApplication event handling, not the responder chain.
-    // Calling nextResponder here would break normal key handling.
-}
+// Note: No keyDown override. NSView's default calls interpretKeyEvents
+// which routes to insertText/doCommandBySelector as appropriate.
+// sokol captures key events separately via NSEvent monitoring.
 
 - (void)doCommandBySelector:(SEL)selector {
     // Called by IME for non-character commands (arrows during composition, etc)
