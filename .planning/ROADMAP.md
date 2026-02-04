@@ -84,10 +84,11 @@ Plans:
   3. Japanese: type romaji, see hiragana preedit, Space converts to kanji, Enter commits
   4. Japanese: clause segmentation visible, arrow keys navigate, thick underline on selected clause
   5. Chinese: type pinyin, see preedit, candidates appear, number keys or Space select
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 19-01: TBD
+- [ ] 19-01-PLAN.md — NSTextInputClient core methods (setMarkedText, insertText, unmarkText)
+- [ ] 19-02-PLAN.md — Coordinate bridge for candidate window, clause attribute parsing
 
 #### Phase 20: Korean + Keyboard Integration
 **Goal**: Korean hangul composition works, keyboard edge cases handled
@@ -139,9 +140,9 @@ Plans:
 | 16. API & Demo | v1.3 | 2/2 | Complete | 2026-02-03 |
 | 17. Accessibility | v1.3 | 2/2 | Complete | 2026-02-03 |
 | 18. Overlay Infrastructure | v1.4 | 1/1 | Complete | 2026-02-03 |
-| 19. NSTextInputClient + JP/CH | v1.4 | 0/? | Not started | - |
+| 19. NSTextInputClient + JP/CH | v1.4 | 0/2 | Not started | - |
 | 20. Korean + Keyboard | v1.4 | 0/? | Not started | - |
 | 21. Multi-Display & Polish | v1.4 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-02-03 after Phase 18 execution*
+*Last updated: 2026-02-03 after Phase 19 planning*
