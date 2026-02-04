@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-03)
 ## Current Position
 
 Phase: 20 of 21 (Korean + Keyboard Integration)
-Plan: 2 of 2 complete
-Status: Phase in progress
-Last activity: 2026-02-04 — Completed 20-02-PLAN.md (keyboard integration)
+Plan: 20-01 at Task 4 checkpoint (human verify), 20-02 COMPLETE
+Status: Debugging Korean first-keypress issue
+Last activity: 2026-02-04 — Fixed backspace (DEL char 127), Korean timing issue remains
 
-Progress: ██████████████████████████████ 34/34+ plans
+Progress: ██████████████████████████████ 33.5/34+ plans
 
 ## Performance Metrics
 
@@ -72,11 +72,28 @@ None.
 
 ### Known Issues
 
-None active.
+**Korean IME first-keypress issue** (active):
+- Korean composition works on SECOND keypress, not first
+- Root cause: ime_bridge_macos.m swizzles sokol's _sapp_macos_view keyDown
+- Swizzling timing: tried +load dispatch_async, lazy in inputContext, on callback registration
+- None work because sokol's view class may not exist or first event already processed
+- Need to investigate when _sapp_macos_view is created vs when callbacks registered
+
+**Attempted fixes in ime_bridge_macos.m:**
+1. dispatch_async in +load → too late
+2. Lazy ensureSwizzling() in inputContext → too late (called during first keypress)
+3. ensureSwizzling() in vglyph_ime_register_callbacks() → still too late
+
+**Key insight:** The callbacks are registered in gg's init_fn. Need to verify sokol's view exists then.
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Completed 20-02-PLAN.md
+Stopped at: Debugging Korean first-keypress (swizzling timing)
 Resume file: None
-Next: Phase 21 (Verification)
+Resume command: `/gsd:execute-phase 20` (will resume from 20-01 checkpoint)
+
+**Debug approach to try next:**
+- Add printf in ensureSwizzling() to verify it runs and finds _sapp_macos_view
+- Check if callbacks are registered BEFORE or AFTER sokol creates its view
+- May need to swizzle NSView.keyDown instead of _sapp_macos_view.keyDown
