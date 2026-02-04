@@ -98,26 +98,24 @@ static BOOL isNavigationKey(unsigned short keyCode) {
 
 // Swizzled keyDown that forwards to input context for IME
 static void vglyph_keyDown(id self, SEL _cmd, NSEvent* event) {
-    // Only intercept if callbacks are registered
+    unsigned short keyCode = [event keyCode];
+
+    // When NOT composing, navigation keys go directly to sokol
+    if (!g_has_marked_text && isNavigationKey(keyCode)) {
+        if (g_original_keyDown) {
+            ((void (*)(id, SEL, NSEvent*))g_original_keyDown)(self, _cmd, event);
+        }
+        return;
+    }
+
+    // During composition OR for non-navigation keys, try IME first
     if (g_marked_callback) {
         NSTextInputContext* ctx = [self inputContext];
-        if (ctx) {
-            unsigned short keyCode = [event keyCode];
-
-            if (g_has_marked_text) {
-                // During composition, let IME handle everything
-                if ([ctx handleEvent:event]) {
-                    return;
-                }
-            } else if (!isNavigationKey(keyCode)) {
-                // Not composing, not a navigation key - might start composition
-                if ([ctx handleEvent:event]) {
-                    return;
-                }
-            }
-            // Navigation keys when not composing fall through to original handler
+        if (ctx && [ctx handleEvent:event]) {
+            return;  // IME handled it
         }
     }
+
     // Fall through to original handler
     if (g_original_keyDown) {
         ((void (*)(id, SEL, NSEvent*))g_original_keyDown)(self, _cmd, event);
