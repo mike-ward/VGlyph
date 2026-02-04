@@ -9,11 +9,11 @@ Requirements for CJK IME milestone. Each maps to roadmap phases.
 
 ### Overlay Infrastructure
 
-- [ ] **OVLY-01**: VGlyphIMEOverlayView class implementing NSTextInputClient protocol
-- [ ] **OVLY-02**: Overlay positioned above MTKView as sibling (not child)
-- [ ] **OVLY-03**: Overlay activates as first responder when text field focused
-- [ ] **OVLY-04**: Overlay deactivates and returns first responder to MTKView on blur
-- [ ] **OVLY-05**: Non-Darwin stub implementation (no-op functions)
+- [x] **OVLY-01**: VGlyphIMEOverlayView class implementing NSTextInputClient protocol
+- [x] **OVLY-02**: Overlay positioned above MTKView as sibling (not child)
+- [x] **OVLY-03**: Overlay activates as first responder when text field focused
+- [x] **OVLY-04**: Overlay deactivates and returns first responder to MTKView on blur
+- [x] **OVLY-05**: Non-Darwin stub implementation (no-op functions)
 
 ### NSTextInputClient Protocol
 
@@ -99,11 +99,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| OVLY-01 | Phase 18 | Pending |
-| OVLY-02 | Phase 18 | Pending |
-| OVLY-03 | Phase 18 | Pending |
-| OVLY-04 | Phase 18 | Pending |
-| OVLY-05 | Phase 18 | Pending |
+| OVLY-01 | Phase 18 | Complete |
+| OVLY-02 | Phase 18 | Complete |
+| OVLY-03 | Phase 18 | Complete |
+| OVLY-04 | Phase 18 | Complete |
+| OVLY-05 | Phase 18 | Complete |
 | PROT-01 | Phase 19 | Pending |
 | PROT-02 | Phase 19 | Pending |
 | PROT-03 | Phase 19 | Pending |
@@ -142,4 +142,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-03*
-*Last updated: 2026-02-03 after initial definition*
+*Last updated: 2026-02-03 after Phase 18 completion*
