@@ -87,8 +87,9 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 19-01-PLAN.md — NSTextInputClient core methods (setMarkedText, insertText, unmarkText)
-- [ ] 19-02-PLAN.md — Coordinate bridge for candidate window, clause attribute parsing
+- [x] 19-01-PLAN.md — NSTextInputClient core methods (setMarkedText, insertText, unmarkText)
+- [x] 19-02-PLAN.md — Coordinate bridge for candidate window, clause attribute parsing
+- [x] 19-03-PLAN.md — V-side callbacks and preedit rendering
 
 #### Phase 20: Korean + Keyboard Integration
 **Goal**: Korean hangul composition works, keyboard edge cases handled
@@ -140,7 +141,7 @@ Plans:
 | 16. API & Demo | v1.3 | 2/2 | Complete | 2026-02-03 |
 | 17. Accessibility | v1.3 | 2/2 | Complete | 2026-02-03 |
 | 18. Overlay Infrastructure | v1.4 | 1/1 | Complete | 2026-02-03 |
-| 19. NSTextInputClient + JP/CH | v1.4 | 0/2 | Not started | - |
+| 19. NSTextInputClient + JP/CH | v1.4 | 3/3 | Complete | 2026-02-04 |
 | 20. Korean + Keyboard | v1.4 | 0/? | Not started | - |
 | 21. Multi-Display & Polish | v1.4 | 0/? | Not started | - |
 
