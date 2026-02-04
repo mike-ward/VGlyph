@@ -1,343 +1,242 @@
-# Features Research: CJK IME
-
-**Domain:** CJK (Chinese, Japanese, Korean) input method editor support
-**Researched:** 2026-02-03
-**Project:** VGlyph v1.4
-**Confidence:** MEDIUM-HIGH (verified via official docs, Mozilla IME guide, Microsoft Learn)
-
-## Summary
-
-"Basic CJK IME" means: user types phonetic input (romaji, pinyin, jamo), sees preedit text with
-underline, presses Space to see candidates, selects candidate, commits with Enter. The system must
-handle three fundamentally different composition models:
-
-1. **Japanese:** Multi-stage conversion (romaji -> hiragana -> kanji), clause segmentation, Space
-   cycles candidates
-2. **Chinese:** Phonetic input (pinyin or zhuyin), direct candidate selection, number keys for
-   quick selection
-3. **Korean:** Real-time syllable composition (jamo -> syllable block), no candidate window for
-   basic input
-
-All three share: marked/preedit text display, cursor inside composition, candidate window
-positioning via `firstRectForCharacterRange:actualRange:`. VGlyph already has CompositionState with
-clause support - v1.4 extends this for CJK-specific behaviors.
-
-## Japanese IME
-
-### Basic Flow
-
-1. User types romaji: "nihongo" appears as "にほんご" (hiragana preedit, underlined)
-2. Space key: triggers conversion, shows candidates like "日本語", "二本後"
-3. Arrow keys or Space: cycle through candidates
-4. Enter: commits selected candidate
-5. Multi-clause: long input splits into segments (bunsetsu), arrow keys navigate between clauses
-
-### Table Stakes (Must Have)
-
-| Feature | Description | NSTextInputClient Method | Notes |
-|---------|-------------|--------------------------|-------|
-| **Hiragana preedit display** | Show romaji->hiragana conversion in underlined text | `setMarkedText:selectedRange:replacementRange:` | Underline indicates uncommitted |
-| **Clause segmentation** | Split preedit into bunsetsu segments | Clause info in marked text attributes | Selected clause gets thick underline |
-| **Space for conversion** | Space key triggers kanji candidates | Handled by IME, app shows candidates | No app-side logic needed |
-| **Candidate selection** | Arrow/Space cycles candidates, numbers quick-select | IME handles, app updates marked text | App just displays |
-| **Enter to commit** | Finalize composition | `insertText:replacementRange:` | Marked text removed, final text inserted |
-| **Escape to cancel** | Discard preedit | `unmarkText` | Return to pre-composition state |
-| **Clause navigation** | Arrow keys move between clauses | Selection within marked text | Per-clause conversion possible |
-
-### Advanced (Defer to Post-v1.4)
-
-| Feature | Description | Why Defer |
-|---------|-------------|-----------|
-| **Reconversion (再変換)** | Select committed text, convert again | Requires `selectedRange` tracking, complex |
-| **User dictionary** | Custom readings/conversions | Application layer concern |
-| **Prediction/auto-complete** | Predict next word | System IME feature, not app responsibility |
-| **F-key conversions** | F6=hiragana, F7=katakana, etc. | System IME handles, app just receives |
-| **Kana-direct input** | Type on kana keyboard layout | No romaji stage, but same composition flow |
-
-### Japanese-Specific Behaviors
-
-- **Clause underline styles:** Raw (thin), converted (thin), selected (thick)
-- **Cursor in preedit:** User can position cursor within composition for partial editing
-- **Space key semantics:** First press converts, subsequent presses cycle candidates
-- **Long text:** IME auto-segments into clauses based on grammar
-
-## Chinese IME
-
-### Basic Flow (Pinyin)
-
-1. User types pinyin: "nihao" appears as preedit (may show as pinyin or partial candidates)
-2. Candidate window shows: "你好", "你号", "泥号", etc.
-3. Number keys 1-9 select candidate directly, or Space selects first
-4. Continue typing for phrase input
-
-### Basic Flow (Zhuyin/Bopomofo - Taiwan)
-
-1. User types zhuyin symbols: ㄋㄧˇㄏㄠˇ
-2. Candidate window shows character options
-3. Same selection mechanism as Pinyin
-
-### Table Stakes (Must Have)
-
-| Feature | Description | NSTextInputClient Method | Notes |
-|---------|-------------|--------------------------|-------|
-| **Pinyin preedit** | Show typed pinyin with underline | `setMarkedText:selectedRange:replacementRange:` | May show partial candidates |
-| **Candidate window positioning** | Window appears near cursor | `firstRectForCharacterRange:actualRange:` | Return rect of preedit start |
-| **Number key selection** | 1-9 keys select candidate | IME handles, commits via `insertText:` | No app logic needed |
-| **Space for first candidate** | Quick commit most likely | IME handles | Same as Japanese |
-| **Multi-character phrases** | Type "beijing" -> "北京" | IME handles phrase lookup | App just displays |
-| **Tone input** | Numbers 1-4 for tones in some modes | IME handles | Transparent to app |
-
-### Advanced (Defer to Post-v1.4)
-
-| Feature | Description | Why Defer |
-|---------|-------------|-----------|
-| **Fuzzy pinyin** | Accept dialect variations | System IME setting |
-| **Double pinyin** | Shortcut vowel groups | System IME setting |
-| **Cloud predictions** | Bing-powered suggestions | System IME feature |
-| **Simplified <-> Traditional** | Convert between scripts | Application layer |
-
-### Chinese-Specific Behaviors
-
-- **No clause segmentation:** Unlike Japanese, Chinese typically shows single underline
-- **Continuous input:** Can type full sentences, IME segments automatically
-- **Nested composition:** Traditional Chinese Zhuyin may use nested inline buffers
-- **Candidate ordering:** Frequency-based, learns from usage
-
-## Korean IME
-
-### Basic Flow
-
-1. User types jamo: ㄴ -> 나 -> 난 (real-time syllable composition)
-2. Syllable block forms as jamo are typed (no explicit conversion step)
-3. Space/Enter commits current syllable, starts next
-4. For hanja (Chinese characters): additional conversion step similar to Japanese
-
-### Table Stakes (Must Have)
-
-| Feature | Description | NSTextInputClient Method | Notes |
-|---------|-------------|--------------------------|-------|
-| **Real-time jamo composition** | ㄱ+ㅏ -> 가 visually as typed | `setMarkedText:selectedRange:replacementRange:` | Syllable forms in real-time |
-| **Syllable block display** | Show composing syllable with underline | Same as above | Single character preedit |
-| **Jamo decomposition on backspace** | 간 -> 가 -> ㄱ -> (empty) | IME handles via marked text updates | Decompose before delete |
-| **Space/punctuation commits** | Non-jamo input commits syllable | `insertText:` after commit | Standard behavior |
-| **2-set (Dubeolsik) layout** | Consonants left, vowels right | IME handles | Default Korean layout |
-
-### Advanced (Defer to Post-v1.4)
-
-| Feature | Description | Why Defer |
-|---------|-------------|-----------|
-| **Hanja conversion** | Convert hangul to Chinese characters | Similar to Japanese kanji conversion |
-| **Old Hangul (archaic jamo)** | Historical characters | Specialized use case |
-| **3-set (Sebeolsik) layout** | Separate initial/final consonants | IME setting |
-| **Romanized input** | Type "annyeong" -> 안녕 | Alternative input method |
-
-### Korean-Specific Behaviors
-
-- **No candidate window for basic hangul:** Syllable composition is deterministic
-- **Backspace decomposition:** Unlike other scripts, backspace removes last jamo, not whole syllable
-- **Continuous composition:** Each syllable auto-commits when next jamo makes it invalid
-- **Short preedit:** Typically single syllable underlined at a time
-
-## Common Features Across CJK
-
-### Marked Text (Preedit)
-
-All CJK input uses marked text to show uncommitted composition:
-
-| Aspect | Japanese | Chinese | Korean |
-|--------|----------|---------|--------|
-| Underline style | Per-clause (raw/converted/selected) | Single underline | Single underline |
-| Length | Often multiple characters/clauses | Variable, can be long phrase | Usually 1 syllable |
-| Cursor inside | Yes, user can navigate | Yes, for editing pinyin | Yes, but rarely needed |
-
-### Candidate Window
-
-| Aspect | Japanese | Chinese | Korean |
-|--------|----------|---------|--------|
-| When shown | After Space press | During/after typing | Only for Hanja |
-| Selection | Space/arrows/numbers | Numbers primary | Numbers if shown |
-| Position | Via `firstRectForCharacterRange:` | Same | Same |
-
-### Commit/Cancel
-
-| Action | Japanese | Chinese | Korean |
-|--------|----------|---------|--------|
-| Commit | Enter | Enter or number key | Space/punctuation/next-incompatible-jamo |
-| Cancel | Escape | Escape | Escape |
-| Partial commit | Per-clause possible | Per-character possible | N/A (single syllable) |
-
-## NSTextInputClient Protocol Mapping
-
-### Required Methods for CJK
-
-| Protocol Method | CJK Feature | Priority | Notes |
-|-----------------|-------------|----------|-------|
-| `setMarkedText:selectedRange:replacementRange:` | Preedit display | **P0** | Core composition |
-| `markedRange` | Query preedit range | **P0** | IME needs this |
-| `selectedRange` | Cursor position | **P0** | Within preedit |
-| `hasMarkedText` | Check if composing | **P0** | State query |
-| `unmarkText` | Cancel/commit composition | **P0** | Cleanup |
-| `insertText:replacementRange:` | Commit final text | **P0** | After selection |
-| `firstRectForCharacterRange:actualRange:` | Candidate window position | **P0** | Critical for UX |
-| `attributedSubstringForProposedRange:actualRange:` | Context for IME | **P1** | Reconversion |
-| `characterIndexForPoint:` | Click in candidate window | **P2** | Mouse selection |
-| `validAttributesForMarkedText` | Supported underline styles | **P1** | Clause styling |
-| `doCommandBySelector:` | Key commands during composition | **P1** | Arrow keys, etc. |
-
-### Marked Text Attributes
-
-The IME sends attributes with marked text to indicate clause types:
-
-```
-NSMarkedClauseSegmentAttributeName -> clause index (integer)
-NSUnderlineStyleAttributeName -> underline style
-  - NSUnderlineStyleSingle (0x01): raw/unconverted
-  - NSUnderlineStyleThick (0x02): selected clause
-```
-
-VGlyph's existing `ClauseStyle` enum maps to these:
-- `.raw` -> thin underline
-- `.converted` -> thin underline
-- `.selected` -> thick underline
-
-### Coordinate System
-
-`firstRectForCharacterRange:actualRange:` must return:
-- Screen coordinates (not view coordinates)
-- Rect covering the character range
-- Actual range if requested range extends beyond text
-
-Calculation: view coords -> window coords -> screen coords
-
-## VGlyph v1.4 Scope
-
-### Table Stakes (Include in v1.4)
-
-**Already implemented (v1.3):**
-- CompositionState with phase tracking
-- Clause segmentation support
-- Preedit text display
-- Basic dead key composition
-
-**New for v1.4:**
-- Japanese clause navigation (arrow keys in preedit)
-- Proper underline thickness per clause style
-- `firstRectForCharacterRange:` returns correct screen coordinates
-- Korean jamo backspace decomposition support
-- Chinese continuous composition
-- Candidate window positioning accuracy
-
-### Differentiators (Nice to Have)
-
-| Feature | Value | Complexity |
-|---------|-------|------------|
-| Inline candidate preview | Show top candidate in preedit | Medium |
-| Custom underline colors | Match app theme | Low |
-| Vertical text candidate positioning | CJK vertical writing | High |
-
-### Anti-Features (Explicitly Skip)
-
-| Feature | Why Skip |
-|---------|----------|
-| **Custom IME implementation** | Use system IME, don't reinvent |
-| **Dictionary management** | System IME handles |
-| **Prediction/autocomplete** | System IME feature |
-| **IME switching UI** | System handles (Cmd+Space) |
-| **Handwriting recognition** | Separate system feature |
-| **Voice input** | Separate dictation system |
-
-## Implementation Considerations
-
-### Coordinate Conversion for Candidate Window
-
-```
-1. Get character rect in layout coordinates
-2. Convert to view coordinates (apply view transform)
-3. Convert to window coordinates: convertRect:toView:nil
-4. Convert to screen coordinates: window.convertToScreen()
-```
-
-The IME positions its candidate window based on returned rect. Wrong coordinates = candidate window
-in wrong place = major UX problem.
-
-### Handling Clause Attributes
-
-When `setMarkedText:` receives NSAttributedString:
-1. Extract `NSMarkedClauseSegmentAttributeName` for clause boundaries
-2. Extract `NSUnderlineStyleAttributeName` for each clause
-3. Map to VGlyph's Clause struct with ClauseStyle
-
-### Backspace Behavior
-
-- **Japanese/Chinese:** Backspace deletes last character of preedit, or if preedit empty, previous
-  committed character
-- **Korean:** Backspace decomposes syllable (간 -> 가 -> ㄱ), IME handles this via marked text
-  updates
-
-### Focus Loss During Composition
-
-Per existing CONTEXT.md decisions:
-- Auto-commit preedit on focus loss
-- Don't lose user's typed text
-- Same behavior across CJK
-
-## Validation Strategy
-
-| Language | Test Case | Expected Behavior |
-|----------|-----------|-------------------|
-| Japanese | Type "nihongo", Space, Enter | にほんご -> 日本語 committed |
-| Japanese | Type "toukyou", Space x2 | Cycle: 東京 -> 等距 -> ... |
-| Japanese | Type long sentence, arrow between clauses | Per-clause conversion |
-| Chinese | Type "nihao", press 1 | 你好 committed |
-| Chinese | Type "beijing" | 北京 (if in dictionary) or candidates |
-| Korean | Type ㄴ+ㅏ+ㄴ | 난 appears in preedit |
-| Korean | Backspace on 난 | 나 (decomposed) |
-| All | Escape during composition | Preedit discarded |
-| All | Click outside during composition | Preedit committed, cursor moves |
-
-**Manual testing required** with native speakers for each language.
+# Features Research: Performance Optimization
+
+**Project:** VGlyph v1.6
+**Researched:** 2026-02-04
+**Confidence:** MEDIUM
+
+## Executive Summary
+
+Performance optimizations for text rendering focus on three areas: efficient atlas allocation
+(shelf packing), non-blocking GPU uploads (async texture updates), and shaping computation
+reduction (shape plan caching). VGlyph already has multi-page atlas with LRU eviction,
+glyph/metrics caches, and profiling instrumentation — optimizations build on this foundation.
+
+## Shelf Packing Allocator
+
+Efficient bin allocation reducing wasted atlas space vs current allocator.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Horizontal shelf allocation | Industry standard, best for glyph sizes | Medium | Simple > guillotine for glyphs |
+| Best-fit or first-fit heuristic | Minimize vertical waste | Low | Best-fit preferred for glyphs |
+| Shelf merging on deallocation | Prevent vertical fragmentation | Medium | Critical for long sessions |
+| Configurable shelf alignment | Platform texture requirements | Low | 4-byte alignment typical |
+
+**Sources:**
+- [WebRender etagere](https://nical.github.io/posts/etagere.html) — simple shelf allocator,
+  2-column split on 2048x2048, satisfying compromise
+- [Skyline algorithm](https://jvernay.fr/en/blog/skyline-2d-packer/implementation/) — O(N^2)
+  where N is skyline points (typically low)
+- [Shelf algorithms comparison](https://blog.roomanna.com/09-25-2015/binpacking-shelf) —
+  first-fit vs best-area vs worst-width
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Two-column split per page | 2x reduction in shelf scan | Medium | WebRender validated on 2048x2048 |
+| Waste factor tracking | Profiling visibility | Low | Integrate with existing `-d profile` |
+| Bucketed shelf variant | Faster alloc/dealloc via ref-counted buckets | High | Trades memory for CPU |
+
+**Sources:**
+- [WebRender performance](https://nical.github.io/posts/etagere.html) — two columns optimal for
+  2048x2048
+- [Bin packing fragmentation](https://www.gamedev.net/forums/topic/568749-bin-packing-texture-atlasing-glyph-caching-how-do-you-do-it/) —
+  waste tracking valuable for tuning
+
+### Anti-Features
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| Guillotine packing | Complexity without glyph-specific benefit | Use shelf (simpler, sufficient) |
+| Runtime defragmentation | Texture re-upload overhead, frame stalls | Prefer shelf merging on deallocation |
+| Skyline per-pixel tracking | Memory overhead for marginal improvement | Use shelf with coarser granularity |
+| Variable page sizes | Complicates management, unclear benefit | Stick with uniform 2048x2048 pages |
+
+**Sources:**
+- [WebRender decision](https://nical.github.io/posts/etagere.html) — simple shelf beat guillotine
+- [Defragmentation cost](https://github.com/nical/guillotiere) — coalescing needed but full
+  defrag avoided
+- [Texture atlas fragmentation](https://github.com/maggio-a/texture-defrag) — defrag for
+  photo-reconstruction, not dynamic text
+
+## Async Texture Updates
+
+Non-blocking GPU uploads during glyph rasterization.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Pixel Buffer Objects (PBOs) | OpenGL standard for async upload | Medium | GL_PIXEL_UNPACK_BUFFER target |
+| Double-buffered PBOs | Overlap CPU write with GPU read | Medium | Write to PBO[1] while GPU reads PBO[0] |
+| glMapBuffer for writes | Standard async upload pattern | Low | Map, write, unmap, glTexSubImage2D |
+| Immediate return on upload | No frame stall during texture transfer | Medium | Core async benefit |
+
+**Sources:**
+- [OpenGL PBO tutorial](https://www.songho.ca/opengl/gl_pbo.html) — double-buffering enables
+  simultaneous CPU write and GPU DMA
+- [Buffer streaming wiki](https://wikis.khronos.org/opengl/Buffer_Object_Streaming) — multiple
+  buffers avoid implicit sync
+- [Async texture upload Unity](https://docs.unity3d.com/2019.3/Documentation/Manual/AsyncTextureUpload.html) —
+  time-sliced upload reduces main thread wait
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Buffer orphaning fallback | Single-buffer alternative to double-PBO | Low | glBufferData(NULL) re-allocates |
+| Upload batching per frame | Multiple glyphs per PBO transfer | Medium | Reduce API call overhead |
+| Profiling: upload time | Visibility into async benefit | Low | Add to existing `-d profile` |
+| Persistent mapping (GL 4.4+) | Eliminate map/unmap overhead | High | Requires fence sync, coherent flags |
+
+**Sources:**
+- [Buffer orphaning](https://handmade.network/forums/t/6990-buffer_orphaning_in_opengl) —
+  simpler than double-PBO, implementation-dependent
+- [Persistent buffers](https://community.khronos.org/t/can-persistently-mapped-buffers-be-used-for-texture-upload/75228) —
+  GL 4.4+, eliminates unmap overhead
+
+### Anti-Features
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| Synchronous glTexSubImage2D | Blocks CPU on GPU transfer | Use PBOs for async DMA |
+| Single PBO without orphaning | Implicit sync stalls pipeline | Double-buffer or orphan |
+| glGetTexImage for readback | Irrelevant to upload, major stall | Never needed for glyph rendering |
+| Compressed texture formats | Text quality loss, decoder overhead | Use uncompressed RGBA/grayscale |
+
+**Sources:**
+- [Frame budget](https://news.ycombinator.com/item?id=6574951) — 16ms for 60fps, 8ms for 120fps;
+  stalls eat budget
+- [GPU texture upload stall](https://developer.nvidia.com/gpugems/gpugems/part-v-performance-and-practicalities/chapter-28-graphics-pipeline-performance) —
+  large texture uploads cause frame drops
+
+## Shape Plan Caching
+
+HarfBuzz shaping optimization for repeated text with same font/script/language.
+
+### Table Stakes
+
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| hb_shape_plan_create_cached | HarfBuzz builtin caching API | Low | Uses face, props, features, shapers |
+| Cache key: face + script + lang | Minimum key for shape plan reuse | Low | HarfBuzz manages internally |
+| Reference counting | HarfBuzz automatic lifecycle | Low | hb_shape_plan_reference/destroy |
+| User features in key | Font features affect shaping | Low | Part of create_cached signature |
+
+**Sources:**
+- [HarfBuzz shape plans](https://harfbuzz.github.io/shaping-plans-and-caching.html) — caching
+  valuable when resources tight
+- [Shape plan API](https://harfbuzz.github.io/harfbuzz-hb-shape-plan.html) — create_cached with
+  face, props, features
+
+### Differentiators
+
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| hb_shape_plan_create_cached2 | Variable font support (variation coords) | Low | HarfBuzz 2.6.7+ |
+| Profiling: plan cache hits | Visibility into reuse | Low | Add to existing `-d profile` |
+| Explicit plan reuse | Manual lifecycle for hot paths | Medium | Create once, reuse for batch |
+| Plan warm-up on font load | Precompute common script/lang pairs | Medium | Avoid first-frame cost |
+
+**Sources:**
+- [HarfBuzz cached2](https://www.manpagez.com/html/harfbuzz/harfbuzz-2.6.7/harfbuzz-hb-shape-plan.php) —
+  variation-space coords for variable fonts
+- [Shape plan internals](https://harfbuzz.github.io/shaping-and-shape-plans.html) — script/lang
+  lookups, fallback decisions, buggy font workarounds
+
+### Anti-Features
+
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| Application-level plan caching | HarfBuzz already does this | Use hb_shape_plan_create_cached |
+| Caching shaped output | Layout cache already exists (VGlyph v1.2) | Cache plans, not results |
+| Font hashing for cache key | Overcomplicated vs face pointer | Use HarfBuzz face object directly |
+| Per-glyph plan creation | Massive overhead, defeats purpose | Plan per text segment (paragraph) |
+
+**Sources:**
+- [Existing VGlyph layout cache](PROJECT.md:22) — TTL-based, caches shaped results
+- [Shape plan rationale](https://harfbuzz.github.io/shaping-plans-and-caching.html) — avoid
+  "decision-making and trade-offs" overhead
+
+## Feature Dependencies
+
+### On Existing VGlyph Features
+
+| Optimization | Depends On | How |
+|--------------|------------|-----|
+| Shelf packing | Multi-page atlas (v1.2) | Allocator operates within pages |
+| Shelf packing | LRU page eviction (v1.2) | Eviction triggers when shelf alloc fails |
+| Shelf packing | Profiling infrastructure (v1.2) | Waste factor tracking via `-d profile` |
+| Async texture | OpenGL context (existing) | PBOs require GL context |
+| Async texture | Glyph rasterization (existing) | FreeType bitmap → PBO → texture |
+| Async texture | Profiling infrastructure (v1.2) | Upload time tracking via `-d profile` |
+| Shape plan cache | Pango/HarfBuzz (existing) | HarfBuzz provides caching API |
+| Shape plan cache | Layout cache (v1.2) | Plan cache sits before layout cache |
+| Shape plan cache | Profiling infrastructure (v1.2) | Cache hit tracking via `-d profile` |
+
+### Internal Dependencies
+
+| Feature | Depends On | Why |
+|---------|------------|-----|
+| Shelf waste tracking | Shelf allocator | Can't track waste without allocator |
+| Upload batching | PBOs | Batching requires async upload mechanism |
+| Plan cache hit tracking | Shape plan caching | Can't track what doesn't exist |
+
+## MVP Recommendation
+
+**For v1.6 MVP, prioritize:**
+
+1. **Shelf packing allocator** (simple variant, 2-column)
+   - Biggest visible impact: reduced atlas waste
+   - Complexity: medium, well-understood algorithm
+   - Integrates cleanly with existing multi-page atlas
+
+2. **Async texture updates** (double-PBO)
+   - Eliminates frame stalls during glyph rasterization
+   - Complexity: medium, standard OpenGL pattern
+   - Measurable via existing profiling infrastructure
+
+3. **Shape plan caching** (hb_shape_plan_create_cached)
+   - Low complexity: one API call change
+   - Immediate benefit for repeated text
+   - HarfBuzz manages lifecycle automatically
+
+**Defer to post-MVP:**
+- Bucketed shelf variant: optimization of optimization, unnecessary complexity
+- Persistent buffer mapping: requires GL 4.4+, fence sync adds complexity
+- Plan warm-up: micro-optimization, first-frame cost negligible
+- Upload batching: requires additional buffering logic, marginal gain over double-PBO
 
 ## Confidence Assessment
 
-| Topic | Confidence | Reason |
-|-------|------------|--------|
-| Japanese basic flow | HIGH | Well-documented, multiple sources agree |
-| Chinese pinyin flow | HIGH | Microsoft Learn, Apple docs |
-| Korean jamo composition | MEDIUM | Less documentation, behavior inferred |
-| NSTextInputClient methods | HIGH | Apple docs, verified implementations |
-| Clause styling attributes | MEDIUM | Inferred from Mozilla IME guide |
-| Candidate window positioning | HIGH | Multiple implementations documented |
+| Area | Level | Reason |
+|------|-------|--------|
+| Shelf packing | HIGH | WebRender production use, freetype-gl reference, clear algorithm |
+| Async texture | MEDIUM | Standard OpenGL pattern, verified via multiple sources, driver-dependent |
+| Shape plan cache | HIGH | Official HarfBuzz API, clear documentation, reference-counted lifecycle |
+| Performance impact | LOW | No benchmarks run, impact depends on workload characteristics |
 
-## Sources
+## Open Questions
 
-**NSTextInputClient Protocol:**
-- [Apple Developer Documentation](https://developer.apple.com/documentation/appkit/nstextinputclient)
-- [NSTextInputClient Protocol Reference (Leopard)](https://leopard-adc.pepas.com/documentation/Cocoa/Reference/NSTextInputClient_Protocol/Reference/Reference.html)
-- [jessegrosjean/NSTextInputClient - Reference Implementation](https://github.com/jessegrosjean/NSTextInputClient)
-- [Mozilla IME Handling Guide](https://firefox-source-docs.mozilla.org/editor/IMEHandlingGuide.html)
-- [firstRectForCharacterRange implementation](https://gist.github.com/ishikawa/23431)
+- Current atlas allocator: simple linear? row-based? (affects shelf packing integration)
+- OpenGL version target: 3.3? 4.x? (affects PBO features available)
+- Typical glyph size distribution: affects shelf allocator heuristic choice
+- Font switching frequency: affects shape plan cache hit rate
 
-**Japanese IME:**
-- [Microsoft Japanese IME](https://support.microsoft.com/en-us/windows/microsoft-japanese-ime-da40471d-6b91-4042-ae8b-713a96476916)
-- [Japanese IME - Microsoft Learn](https://learn.microsoft.com/en-us/globalization/input/japanese-ime)
-- [Japanese input method - Wikipedia](https://en.wikipedia.org/wiki/Japanese_input_method)
-- [12 Tips to use your Japanese IME better](https://nihonshock.com/2010/04/12-japanese-ime-tips/)
+## Sources Summary
 
-**Chinese IME:**
-- [Microsoft Simplified Chinese IME](https://support.microsoft.com/en-us/windows/microsoft-simplified-chinese-ime-9b962a3b-2fa4-4f37-811c-b1886320dd72)
-- [Microsoft Traditional Chinese IME](https://support.microsoft.com/en-us/windows/microsoft-traditional-chinese-ime-ef596ca5-aff7-4272-b34b-0ac7c2631a38)
-- [Pinyin input method - Wikipedia](https://en.wikipedia.org/wiki/Pinyin_input_method)
-- [Zhuyin vs Pinyin - Chineasy](https://www.chineasy.com/zhuyin-vs-pinyin-exploring-the-unique-chinese-phonetic-system-of-bopomofo/)
+**HIGH confidence (Context7/official docs):**
+- [HarfBuzz Manual: Shape Plans](https://harfbuzz.github.io/shaping-plans-and-caching.html)
+- [OpenGL Wiki: Buffer Streaming](https://wikis.khronos.org/opengl/Buffer_Object_Streaming)
+- [OpenGL PBO Tutorial](https://www.songho.ca/opengl/gl_pbo.html)
 
-**Korean IME:**
-- [Korean IME - Microsoft Learn](https://learn.microsoft.com/en-us/globalization/input/korean-ime)
-- [Hangul - Wikipedia](https://en.wikipedia.org/wiki/Hangul)
-- [hangul-jamo library](https://github.com/jonghwanhyeon/hangul-jamo)
+**MEDIUM confidence (verified production implementations):**
+- [WebRender Texture Atlas](https://nical.github.io/posts/etagere.html)
+- [freetype-gl Skyline Packer](https://github.com/rougier/freetype-gl/blob/master/texture-atlas.h)
 
-**IME Composition Visual Styling:**
-- [React Native Paper IME underline issue](https://github.com/callstack/react-native-paper/issues/4779)
-- [Mozilla Bug 875674 - NSTextInputClient implementation](https://bugzilla.mozilla.org/show_bug.cgi?id=875674)
-
----
-
-*Research complete. Features categorized for v1.4 CJK IME milestone.*
+**LOW confidence (community discussions, unverified):**
+- [GameDev.net bin packing discussion](https://www.gamedev.net/forums/topic/568749-bin-packing-texture-atlasing-glyph-caching-how-do-you-do-it/)
+- [Handmade Network buffer orphaning](https://handmade.network/forums/t/6990-buffer_orphaning_in_opengl)

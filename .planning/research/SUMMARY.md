@@ -1,204 +1,262 @@
-# VGlyph v1.4 CJK IME Research Summary
+# VGlyph v1.6 Performance Optimization Research Summary
 
-**Project:** VGlyph v1.4 CJK IME
-**Domain:** CJK input method integration without sokol modifications
-**Researched:** 2026-02-03
+**Project:** VGlyph v1.6 Performance Optimization
+**Domain:** Text rendering performance
+**Researched:** 2026-02-04
 **Confidence:** MEDIUM-HIGH
 
 ## Executive Summary
 
-VGlyph v1.4 adds full CJK (Japanese, Chinese, Korean) input method support via an overlay NSView
-architecture that bypasses sokol's MTKView limitation. The core problem: sokol creates an MTKView
-that doesn't implement NSTextInputClient, and NSView categories don't transfer protocol conformance
-to MTKView subclasses. The solution is a transparent overlay view that sits above the MTKView,
-receives IME events as first responder during text editing, and forwards them to VGlyph's existing
-CompositionState infrastructure.
+Text renderer performance optimization follows well-established patterns: efficient atlas
+packing (shelf algorithms), overlapped CPU/GPU work (async uploads), and shaping reuse (plan
+caching). VGlyph already has strong foundation (multi-page atlas, LRU caches, profiling) —
+v1.6 optimizes hot paths without architectural changes.
 
-VGlyph already has strong foundations from v1.3: CompositionState with clause support, preedit
-rendering with underlines, dead key composition, and ime_register_callbacks() for event forwarding.
-The missing piece is the native bridge that actually receives macOS IME events. The overlay approach
-provides this bridge without modifying sokol, following patterns proven in CEF/Chromium for
-off-screen rendering IME support.
+Recommended approach: pure V implementation for all features. Shelf packing uses
+best-height-fit algorithm (proven in Firefox/Mapbox). Async uploads use double-buffered
+staging (sokol abstraction prevents true PBOs). Shape plan caching may be redundant —
+existing layout cache likely sufficient, validate with profiling first.
 
-Three distinct CJK composition models need support: Japanese (multi-stage romaji→hiragana→kanji with
-clause segmentation), Chinese (phonetic pinyin/zhuyin with direct candidate selection), and Korean
-(real-time jamo→syllable composition with no candidate window for basic input). All share: marked
-text display, candidate window positioning via `firstRectForCharacterRange:`, and commit/cancel flow.
-"Basic CJK IME" means the standard flow: type → see preedit with underline → candidates appear →
-select → commit.
+Critical risks: maintain existing cache invalidation patterns, avoid fragmentation from
+partial page resets, preserve commit/upload ordering. V's single-threaded nature eliminates
+concurrency pitfalls, focus on correctness over performance complexity.
 
 ## Key Findings
 
-### Recommended Approach
+### Recommended Stack
 
-**Overlay NSView** — Create a transparent NSView subclass implementing NSTextInputClient, positioned
-above sokol's MTKView as a sibling (not child). When a text field gains focus, make the overlay
-first responder for keyboard events. The overlay forwards IME callbacks to existing V infrastructure,
-then renders results in VGlyph (overlay remains visually transparent).
+Pure V implementation, zero dependencies. Shelf packing (~120 LOC), double-buffering (~50
+LOC), cache tuning (~30 LOC). Existing stack unchanged: Pango/HarfBuzz/FreeType for
+rendering, Sokol/gg for GPU.
 
-**Why this approach:**
-- No sokol modification required (project constraint)
-- Clean separation of concerns (IME handling vs rendering)
-- Matches CEF's proven architecture
-- Can be enabled/disabled per text field focus
-- Doesn't interfere with Metal rendering pipeline
+**Core technologies:**
+- **Shelf Best-Height-Fit** (pure V) — proven in Firefox etagere, Mapbox shelf-pack
+- **Double-buffered staging** (pure V) — sokol abstraction prevents raw PBO access
+- **Layout cache tuning** (existing) — may eliminate need for HarfBuzz direct caching
 
-**Rejected alternatives:**
-- Runtime method injection (class_addMethod) — fragile, depends on sokol internals
-- ISA swizzling (object_setClass) — complex, same fragility issue
-- NSTextInputContext remote client — still needs view for inputContext
-- Sokol fork — violates project constraint
+**What NOT to add:**
+- External bin packing libs (JS/Rust, ~100 LOC in V sufficient)
+- PBOs (sokol abstracts GL, staging achieves same benefit)
+- Compute shaders (FreeType already fast, bandwidth is bottleneck)
 
-### Feature Scope
+### Expected Features
 
-**Table stakes (v1.4):**
-- Japanese: hiragana preedit, clause segmentation, Space for conversion, Enter to commit
-- Chinese: pinyin preedit, candidate window positioning, number key selection
-- Korean: jamo→syllable composition, backspace decomposition (간→가→ㄱ)
-- All: marked text underline (thin=raw, thick=selected clause), candidate window positioning
+**Must have (v1.6):**
+- Shelf packing with best-height-fit heuristic (10-15% atlas utilization improvement)
+- Shelf merging on deallocation (prevent vertical fragmentation)
+- Double-buffered pixel data per atlas page (20-30% upload time reduction)
+- Atlas utilization tracking (integrate with existing `-d profile`)
 
-**Already exists (v1.3 foundation):**
-- CompositionState with phase tracking and clause support
-- Preedit text rendering with underlines
-- Dead key composition (accented characters)
-- ime_register_callbacks() for event forwarding
+**Should have (v1.6):**
+- Layout cache TTL increase (100ms → 500ms, text changes infrequent)
+- Layout cache size limit (LRU eviction when >256 entries)
+- Shape cost profiling (track layout_time_ns hit rate)
 
-**Defer to post-v1.4:**
-- Reconversion (select committed text, re-convert)
-- Vertical text candidate positioning
-- Hanja conversion (Korean→Chinese characters)
-- Custom keyboard layouts
+**Defer (post-v1.6):**
+- Two-column shelf split (complexity, marginal gain)
+- Persistent buffer mapping (GL 4.4+, fence sync complexity)
+- Direct HarfBuzz bindings (Pango caching likely sufficient)
+- Upload batching (marginal over double-buffering)
 
-### Architecture
+### Architecture Approach
 
-**New components:**
-1. `ime_overlay_macos.m` — VGlyphIMEOverlayView implementing NSTextInputClient
-2. `ime_manager_darwin.v` — V bindings for overlay lifecycle (init, activate, deactivate)
-3. `ime_manager_stub.v` — No-op stub for non-Darwin builds
+Replace row-based atlas allocation with shelf allocator. Add staging buffers to Renderer.
+Tune existing LayoutCache before adding HarfBuzz layer.
+
+**Modified components:**
+1. **GlyphAtlas.insert_bitmap()** — shelf allocator replaces row logic
+2. **AtlasPage struct** — add `shelves []Shelf` tracking
+3. **Renderer.commit()** — swap staging buffers before upload
+4. **AtlasPage pixel data** — double-buffer: buffer_a/buffer_b
 
 **Integration points:**
-- composition.v: Overlay calls existing CompositionState.set_marked_text(), .commit(), .cancel()
-- ime_bridge_macos.h: Extend with overlay lifecycle C declarations
-- editor_demo.v: Add focus event handling for overlay activation
+- Shelf allocator wraps AtlasPage, maintains same error returns/CachedGlyph output
+- Staging writes during insert_bitmap(), upload during commit() (preserves ordering)
+- Layout cache tuning before HarfBuzz cache (may make it redundant)
 
-**Data flow:**
+**Data flow change:**
 ```
-User types key → Overlay is first responder → inputContext handleEvent
-→ macOS IME processes → setMarkedText:/insertText: callback
-→ V CompositionState updated → Layout rebuilt → Rendered with preedit
+Current: insert_bitmap [row-based] → copy_to_page → commit [sync upload]
+With shelf: insert_bitmap [shelf-alloc] → copy_to_staging → commit [swap+upload]
 ```
 
 ### Critical Pitfalls
 
-**1. Overlay event routing collision**
-- Overlay's hitTest: must return nil except during active IME composition
-- Track composition state: overlay handles events only when hasMarkedText is true
-- Test sequence: click (verify cursor), type (verify char), activate IME (verify composition)
+1. **Vertical fragmentation from partial shelf reset** — reset entire page (not individual
+   shelves) to avoid mid-page gaps. Existing code already does page-level reset, preserve
+   this.
 
-**2. NSTextInputClient range parameter misinterpretation**
-- replacementRange.location == NSNotFound means "use current marked range or selection"
-- For non-NSNotFound replacementRange, interpret as absolute document position
-- Apple docs are misleading — Mozilla devs documented "I believe the document is wrong"
-- Log all NSTextInputClient calls with parameters during development
+2. **Shelf height waste** — first glyph sets height. Use bins (0-32px, 32-64px, 64-256px)
+   to reduce waste. Target: >75% utilization (industry standard).
 
-**3. Candidate window screen coordinate errors**
-- Use proper conversion chain: view → window → screen
-- Test on multi-monitor setups and Retina displays
-- Account for backing scale factor on Retina
+3. **Glyph cache invalidation after reset** — existing code deletes cache entries for reset
+   page (renderer.v:313-317). Shelf packing must preserve this loop.
 
-**4. Korean hangul backspace behavior**
-- During active composition (hasMarkedText), forward backspace to IME
-- Don't handle backspace directly when composition is active
-- Let IME manage jamo decomposition via setMarkedText updates
+4. **Upload-after-draw ordering** — commit() must upload before next frame draws. V
+   single-threaded simplifies (no CPU races), but GPU commands async. Preserve existing
+   commit() → draws ordering.
+
+5. **Pango abstracts HarfBuzz** — direct shape plan caching complex. Existing LayoutCache
+   already caches shaped results. Profile hit rate before adding HarfBuzz layer (likely
+   redundant).
 
 ## Implications for Roadmap
 
-### Phase 18: Overlay Infrastructure
+Suggested 3-phase structure: shelf packing (high confidence, immediate wins) → async uploads
+(medium confidence, measurable but sokol-limited) → shape cache evaluation (low confidence,
+validate need first).
 
-**Rationale:** Must have native bridge before IME events can flow
-**Delivers:**
-- VGlyphIMEOverlayView with NSTextInputClient skeleton
-- ime_manager_darwin.v with init/activate/deactivate
-- ime_manager_stub.v for non-Darwin
+### Phase 1: Shelf Packing Allocator
+**Rationale:** Low risk, high reward. Algorithm well-understood (Firefox/Mapbox proven). Pure
+V, no dependencies. Immediate utilization improvement.
+
+**Delivers:** Shelf packer module, integrated atlas allocation, utilization metrics.
+
+**Addresses:**
+- Shelf best-height-fit allocation (FEATURES.md table stakes)
+- Shelf merging on deallocation (prevent fragmentation)
+- Waste factor tracking (profiling visibility)
+
+**Avoids:**
+- Vertical fragmentation (reset entire page, not individual shelves)
+- Height waste (use bins: small/med/large)
+- Cache invalidation (preserve existing deletion loop)
+
 **Success criteria:**
-- Overlay appears and can become first responder
-- Japanese IME activates when overlay focused
-**Addresses pitfalls:** Overlay event routing collision (#1)
+- Atlas utilization >75% (vs current ~60-70%)
+- atlas_debug example shows shelf boundaries
+- No cache collision panics in debug builds
 
-### Phase 19: NSTextInputClient Implementation
+### Phase 2: Async Texture Updates
+**Rationale:** Measurable frame time reduction, but sokol abstraction limits true async.
+Double-buffered staging achieves CPU/GPU overlap without raw PBOs. Complexity moderate,
+benefit GPU-dependent.
 
-**Rationale:** Connect overlay to existing callbacks, verify events reach V
-**Delivers:**
-- Full NSTextInputClient protocol implementation
-- setMarkedText/insertText forwarding to CompositionState
-- firstRectForCharacterRange with coordinate transforms
+**Delivers:** Double-buffered pixel data per page, staging buffer management, upload time
+metrics.
+
+**Addresses:**
+- Double-buffered PBOs equivalent (FEATURES.md table stakes)
+- Upload time profiling (differentiator)
+
+**Avoids:**
+- Upload-after-draw bug (preserve commit() → draws ordering)
+- Over-engineering for V (single PBO, no threading)
+- Atlas grow corruption (preserve cleanup() deferred destroy)
+
 **Success criteria:**
-- Japanese IME shows composition text in VGlyph
-- Candidate window appears near cursor (not at screen corner)
-**Addresses pitfalls:** Range parameters (#2), coordinate errors (#3)
+- 5-10% frame time reduction on glyph-heavy frames
+- upload_time_ns metric shows improvement
+- No visual corruption (glyphs visible immediately)
 
-### Phase 20: Keyboard Integration
+### Phase 3: Shape Plan Cache Evaluation
+**Rationale:** Existing LayoutCache may make this redundant. Pango abstracts HarfBuzz (no
+direct control). Profile first to validate need before implementing.
 
-**Rationale:** Handle backspace, dead keys, focus transitions correctly
-**Delivers:**
-- Korean backspace decomposition (forward to IME when composing)
-- Dead key integration (disable V-side when overlay active)
-- Focus loss auto-commit
-- Undo/redo blocked during composition
+**Delivers:** LayoutCache hit/miss instrumentation. If needed: HarfBuzz cache with LRU
+eviction.
+
+**Addresses (if profiling shows need):**
+- hb_shape_plan_create_cached integration (FEATURES.md table stakes)
+- Cache size limit with LRU (256 entries, match MetricsCache pattern)
+- Cache hit tracking (profiling differentiator)
+
+**Avoids:**
+- Font change invalidation (include face ptr in key)
+- Memory bloat (LRU with 256 entry limit)
+- Size change miss (include physical pixel size in key)
+- Feature hash collision (FNV-1a like existing LayoutCache)
+- Lifetime bugs (reference() on cache, destroy() on evict)
+
 **Success criteria:**
-- Korean 간 + backspace → 가 (not deleted)
-- Dead keys work after using CJK IME
-- No crash on Cmd+Z during composition
-**Addresses pitfalls:** Korean backspace (#4), dead key conflict (#5), undo during composition (#6)
+- LayoutCache hit rate instrumented (baseline established)
+- If miss rate >20%, proceed with HarfBuzz cache
+- If miss rate <20%, defer (existing cache sufficient)
 
-### Phase 21: CJK Testing & Polish
+### Phase Ordering Rationale
 
-**Rationale:** Validate all three CJK input methods work correctly
-**Delivers:**
-- Japanese: hiragana → kanji with clause selection
-- Chinese: pinyin with candidate selection
-- Korean: hangul jamo composition
-- Multi-monitor candidate positioning
-- Retina display support
-**Success criteria:**
-- All three IMEs complete basic flow: type → candidates → commit
-- Manual testing with native speakers
+- **Shelf first:** Independent of other optimizations, immediate measurable improvement, low
+  integration risk. Builds foundation (better utilization = fewer page resets = less cache
+  churn).
+
+- **Async second:** Depends on stable atlas allocation (shelf packing). Profiling shelf
+  gains informs async priority (if atlas resets reduced, upload optimization less critical).
+
+- **Shape cache last:** May be unnecessary (LayoutCache sufficient). Profiling phases 1-2
+  provides data to decide. Pango abstraction makes this complex, defer until proven needed.
+
+### Research Flags
+
+**Needs deeper research during planning:**
+- **Phase 2 (async uploads):** Sokol abstraction limits. May need raw GL investigation if
+  double-buffering insufficient. Risk: breaks abstraction, Metal/D3D11 incompatibility.
+
+**Standard patterns (skip research-phase):**
+- **Phase 1 (shelf packing):** Well-documented algorithm, clear implementation path. Firefox
+  etagere, Mapbox shelf-pack provide reference.
+- **Phase 3 (shape cache):** If implemented, HarfBuzz API well-documented. Integration
+  pattern matches existing MetricsCache.
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Overlay approach | MEDIUM | CEF precedent exists, not tested with sokol specifically |
-| NSTextInputClient protocol | HIGH | Apple docs, Mozilla/winit implementations verified |
-| Japanese/Chinese flow | HIGH | Well-documented, multiple sources agree |
-| Korean jamo composition | MEDIUM | Less documentation, behavior inferred from bug reports |
-| Coordinate transforms | HIGH | Multiple implementations documented, known pitfalls |
-| Range parameters | HIGH | Mozilla Bug 875674 explicitly documents Apple doc errors |
+| Stack | HIGH | Pure V, zero dependencies. Shelf algorithm proven. Staging pattern clear. |
+| Features | MEDIUM | Table stakes clear, differentiators speculative (performance impact workload-dependent). |
+| Architecture | MEDIUM | Integration points identified, but sokol async limits unclear until tested. |
+| Pitfalls | HIGH | VGlyph-specific risks identified from codebase review. Existing patterns well-understood. |
 
 **Overall confidence:** MEDIUM-HIGH
 
-The overlay approach is well-supported by CEF precedent. NSTextInputClient protocol is
-well-documented, though with known Apple doc inaccuracies that the research has addressed.
-Main uncertainty: overlay integration with sokol's event loop needs implementation validation.
+Shelf packing: HIGH (proven algorithm, clear integration). Async uploads: MEDIUM (sokol
+limits, need profiling). Shape cache: LOW (may be redundant, validate first).
+
+### Gaps to Address
+
+- **Current atlas allocator details:** Research assumes row-based, verify actual
+  implementation before shelf integration.
+
+- **OpenGL version target:** Affects PBO features available. If GL 4.4+, persistent mapping
+  possible (deferred differentiator). If GL 3.3, limited to double-buffering.
+
+- **Typical glyph size distribution:** Affects shelf bin choices. Profiling existing atlas
+  informs bin boundaries (currently assumed: 0-32px, 32-64px, 64-256px).
+
+- **Font switching frequency:** Affects shape plan cache value. High frequency = cache churn
+  (low benefit). Low frequency = cache hits (high benefit). Workload-dependent.
+
+- **LayoutCache hit rate baseline:** Phase 3 decision depends on this. Instrument before
+  implementing HarfBuzz cache.
 
 ## Sources
 
-**HIGH confidence (official docs, verified bugs):**
-- [NSTextInputClient Protocol](https://developer.apple.com/documentation/appkit/nstextinputclient)
-- [Mozilla Bug 875674](https://bugzilla.mozilla.org/show_bug.cgi?id=875674) — NSTextInputClient impl
-- [winit Issue #3617](https://github.com/rust-windowing/winit/issues/3617) — Range parameters
-- [Apple FB13789916](https://gist.github.com/krzyzanowskim/340c5810fc427e346b7c4b06d46b1e10) — Chinese
-  keyboard selectedRange bug
-- [Microsoft: Glaring Hole in NSTextInputClient](https://learn.microsoft.com/en-us/archive/blogs/rick_schaut/the-glaring-hole-in-the-nstextinputclient-protocol)
+### Primary (HIGH confidence)
+- [Mapbox shelf-pack](https://github.com/mapbox/shelf-pack) — reference implementation,
+  1,610 ops/sec benchmark
+- [Firefox etagere](https://nical.github.io/posts/etagere.html) — production rationale,
+  shelf > guillotine for simplicity
+- [HarfBuzz shape plan docs](https://harfbuzz.github.io/shaping-plans-and-caching.html) —
+  official caching API
+- [OpenGL PBO tutorial](https://www.songho.ca/opengl/gl_pbo.html) — async upload pattern
+- [Sokol sg_update_image](https://github.com/floooh/sokol/issues/567) — partial update
+  discussion
 
-**MEDIUM confidence (patterns, multiple sources):**
-- [CEF IME for Off-Screen Rendering](https://www.magpcss.org/ceforum/viewtopic.php?f=8&t=10470)
-- [sokol Issue #595](https://github.com/floooh/sokol/issues/595) — IME support request
-- [GLFW NSTextInputClient](https://fsunuc.physics.fsu.edu/git/gwm17/glfw/commit/3107c9548d7911d9424ab589fd2ab8ca8043a84a)
-- [jessegrosjean NSTextInputClient](https://github.com/jessegrosjean/NSTextInputClient) — Reference
-- [FSNotes Issue #708](https://github.com/glushchenko/fsnotes/issues/708) — Korean delete bug
-- [Zed Issue #46055](https://github.com/zed-industries/zed/issues/46055) — Candidate position
+### Secondary (MEDIUM confidence)
+- [Roomanna shelf algorithms](https://blog.roomanna.com/09-25-2015/binpacking-shelf) —
+  first-fit vs best-area comparison
+- [lisyarus texture packing](https://lisyarus.github.io/blog/posts/texture-packing.html) —
+  algorithm tradeoffs
+- [Stray Pixels font packing](https://straypixels.net/texture-packing-for-fonts/) — glyph
+  specific considerations
+- [Mozilla Bugzilla 1679751](https://bugzilla.mozilla.org/show_bug.cgi?id=1679751) — shelf
+  allocator fragmentation discussion
+
+### VGlyph Codebase (HIGH confidence)
+- glyph_atlas.v — multi-page LRU eviction, grow() deferred cleanup, row-based allocation
+- renderer.v — glyph cache invalidation loop, commit() upload ordering
+- api.v — LayoutCache FNV-1a hashing pattern
+- PROJECT.md — cache sizes (glyph: 4096, metrics: 256, layout: 10K entries)
 
 ---
-*Research completed: 2026-02-03*
+*Research completed: 2026-02-04*
 *Ready for roadmap: yes*

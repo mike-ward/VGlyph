@@ -1,888 +1,387 @@
-# Technology Stack — Text Editing & IME
+# Stack Research: Performance Optimization (v1.6)
 
-**Project:** VGlyph v1.3
-**Focus:** Text editing capabilities and IME support
-**Researched:** 2026-02-02 (updated 2026-02-03)
-**Confidence:** HIGH
+**Researched:** 2026-02-04
+**Focus:** Stack additions for shelf packing, async GPU uploads, HarfBuzz shape caching
 
 ## Executive Summary
 
-Text editing adds cursor positioning, selection, mutation, and IME on top of existing rendering.
-No new C libraries — Pango provides all needed APIs. macOS IME via NSTextInputClient protocol.
-V FFI handles Objective-C callbacks. Integration: existing hit testing foundation already built.
+Three optimizations require minimal stack additions. Shelf packing needs algorithm
+implementation in V (no dependencies). Async uploads achievable with double-buffered texture
+data approach (no PBOs needed with sokol). Shape plan caching requires HarfBuzz C API
+bindings (already have harfbuzz pkgconfig).
 
-## Stack Additions Required
+## 1. Shelf Packing Allocator
 
-### None — Existing Stack Sufficient
+### Algorithm Choice: Shelf Best-Height-Fit
 
-**All needed APIs already available through existing dependencies:**
-- Pango 1.0 (existing)
-- macOS Cocoa/Foundation frameworks (existing via accessibility layer)
-- Objective-C runtime (existing via accessibility/objc_helpers.h)
+**What:** Divides atlas into horizontal shelves. Places glyphs on shelf minimizing wasted
+vertical space.
 
-**Rationale:** Text editing is API extension, not new dependencies.
+**Why this algorithm:**
+- Ideal for similar-height items (glyphs are)
+- Supports deallocation (unlike guillotine/skyline)
+- Simple implementation (~100 LOC)
+- Proven: Firefox étagère, Mapbox shelf-pack
 
-## API Details
+**Performance:**
+- Mapbox shelf-pack: 1,610 ops/sec (single alloc)
+- "Several orders of magnitude faster" than general bin packers
+- Firefox chose this over maxrects for simplicity + deallocation
 
-### Pango APIs for Editing (Already Bound)
+**References:**
+- [Mapbox shelf-pack](https://github.com/mapbox/shelf-pack) - JavaScript reference impl
+- [Firefox étagère](https://nical.github.io/posts/etagere.html) - Rust impl, rationale
+- [Roomanna shelf algorithms](https://blog.roomanna.com/09-25-2015/binpacking-shelf)
 
-Most needed APIs already declared in `c_bindings.v`. Missing APIs listed below.
+### Implementation in V
 
-#### Already Available
+**Approach:** Pure V implementation, no external dependencies.
 
-| API | Purpose | File |
-|-----|---------|------|
-| `pango_layout_index_to_pos` | Cursor position -> rect | c_bindings.v:530 |
-| `pango_layout_set_text` | Text mutation | c_bindings.v:524 |
-| `pango_layout_xy_to_index` | Mouse -> text index | Needs binding |
-
-#### Need to Add
-
-| API | Signature | Purpose |
-|-----|-----------|---------|
-| `pango_layout_get_cursor_pos` | `void(PangoLayout*, int, PangoRectangle*, PangoRectangle*)` | Strong/weak cursor rects |
-| `pango_layout_xy_to_index` | `bool(PangoLayout*, int, int, int*, int*)` | Screen coords -> byte index |
-| `pango_layout_move_cursor_visually` | `void(PangoLayout*, bool, int, int, int, int*, int*)` | Keyboard navigation |
-
-**Add to c_bindings.v:**
+**Data structure:**
 ```v
-fn C.pango_layout_get_cursor_pos(&C.PangoLayout, int, &C.PangoRectangle, &C.PangoRectangle)
-fn C.pango_layout_xy_to_index(&C.PangoLayout, int, int, &int, &int) bool
-fn C.pango_layout_move_cursor_visually(&C.PangoLayout, bool, int, int, int, &int, &int)
+struct Shelf {
+    y int           // Y position of shelf
+    height int      // Shelf height (tallest item)
+    cursor_x int    // Next insertion X
+    width int       // Total width available
+}
+
+struct ShelfAllocator {
+    shelves []Shelf
+    width int
+    height int
+    cursor_y int    // Next shelf Y
+}
 ```
 
-### Pango Cursor APIs — Detailed Behavior
+**Algorithm:**
+```
+pack(glyph_w, glyph_h):
+    1. Find shelf with best height fit (min waste, glyph_h <= shelf.height)
+    2. If found: place at shelf.cursor_x, advance cursor
+    3. If not: create new shelf at cursor_y with height=glyph_h
+    4. Return (x, y, shelf_index)
+```
 
-#### pango_layout_get_cursor_pos
+**Integration:** Replace current row-based allocation in `insert_bitmap()`
+(glyph_atlas.v:487). Shelf allocator wraps AtlasPage, adds `shelves []Shelf` field.
 
-Returns two cursor rects (strong/weak) as zero-width rectangles with run height.
-
-**Strong cursor:** Insertion point for text matching layout base direction
-**Weak cursor:** Insertion point for opposite-direction text (bidi)
-
-**Parameters accept NULL** if only one cursor needed.
-
-**Source:** [Pango.Layout.get_cursor_pos](https://docs.gtk.org/Pango/method.Layout.get_cursor_pos.html)
-
-#### pango_layout_xy_to_index
-
-Converts screen coordinates to byte index. Returns TRUE if coords inside layout, FALSE outside.
-
-**Clamping behavior:**
-- Y outside: snaps to nearest line
-- X outside: snaps to line start/end
-
-**Trailing output:** 0 for leading edge, N for trailing edge (grapheme position)
-
-**Source:** [Pango.Layout.xy_to_index](https://docs.gtk.org/Pango/method.Layout.xy_to_index.html)
-
-#### pango_layout_move_cursor_visually
-
-Computes new cursor position from old position + direction (visual order).
-
-**Key for:** Left/right arrow navigation respecting bidi text order
-
-**Handles:**
-- Bidirectional text jumps
-- Grapheme boundaries (multi-char glyphs like emoji)
-- Visual vs logical order differences
-
-**Source:** [Pango.Layout.move_cursor_visually](https://docs.gtk.org/Pango/method.Layout.move_cursor_visually.html)
-
-### macOS IME — NSTextInputClient Protocol
-
-**Protocol:** `NSTextInputClient`
-**Framework:** AppKit (Cocoa)
-**Purpose:** IME composition window positioning and marked text handling
-
-#### Required Methods
-
-| Method | Purpose |
-|--------|---------|
-| `insertText:replacementRange:` | Insert committed text |
-| `setMarkedText:selectedRange:replacementRange:` | Handle composition |
-| `markedRange()` | Get marked text range |
-| `selectedRange()` | Get current selection |
-| `firstRectForCharacterRange:actualRange:` | Position IME candidate window |
-| `unmarkText()` | Clear composition |
-| `validAttributesForMarkedText()` | Supported attributes |
-| `hasMarkedText()` | Check composition state |
-| `attributedSubstringForProposedRange:actualRange:` | Text for IME |
-
-**Source:** [NSTextInputClient](https://developer.apple.com/documentation/appkit/nstextinputclient)
-
----
-
-## CJK IME Workarounds (Without Sokol Modification)
-
-**Added:** 2026-02-03
-**Confidence:** MEDIUM
-
-### Problem Statement
-
-The core problem: sokol creates its own MTKView subclass (`_sapp_macos_view`) that doesn't implement
-`NSTextInputClient`. The existing VGlyph approach using an NSView category fails because category
-methods on NSView don't automatically inherit to MTKView subclasses in a way that macOS's text input
-system recognizes for protocol conformance.
-
-**Constraint:** No sokol modifications allowed.
-
-### Approaches Evaluated
-
-#### 1. Overlay NSView (Transparent Sibling) — RECOMMENDED
-
-**How it works:**
-- Create a custom NSView subclass implementing NSTextInputClient
-- Add as sibling to sokol's MTKView (not child, to avoid Metal layer issues)
-- Make it first responder during text editing mode
-- Forward keyboard events through NSTextInputContext to this view
-- Render results in VGlyph (overlay view remains visually transparent)
+### Tradeoffs
 
 **Pros:**
-- No sokol modification required
-- Clean separation of concerns (IME handling vs rendering)
-- Matches CEF's proven architecture for offscreen IME
-- Can be enabled/disabled per text field focus
-- Doesn't interfere with Metal rendering pipeline
+- Better space utilization than current row packer
+- Fast allocation (O(n) scan of shelves, typically <10 shelves)
+- Deallocation possible (track per-shelf occupancy)
 
 **Cons:**
-- Requires careful first responder management
-- Must coordinate event routing between views
-- Adds complexity to initialization (need NSWindow access)
-- Candidate window positioning requires coordinate transforms
+- Wastes space if glyph heights vary significantly (not an issue - glyphs cluster by font
+size)
+- Not optimal packing (but 3-5% wasted space acceptable for simplicity)
 
-**Feasibility:** HIGH
+## 2. Async Texture Updates
 
-**Implementation pattern (Objective-C):**
-```objc
-// VGlyphTextInputView.h
-@interface VGlyphTextInputView : NSView <NSTextInputClient>
-@property (nonatomic) NSMutableAttributedString *markedText;
-@property (nonatomic) NSRange markedRange;
-@property (nonatomic) NSRange selectedRange;
-// Callbacks to V code
-@property (nonatomic) IMEMarkedTextCallback markedCallback;
-@property (nonatomic) IMEInsertTextCallback insertCallback;
-@property (nonatomic) IMEBoundsCallback boundsCallback;
-@property (nonatomic) void* userData;
-@end
+### Approach: Double-Buffered Pixel Data
 
-// Initialization from V (after sokol window created)
-void vglyph_ime_init(void) {
-    NSWindow* window = sapp_macos_get_window();
-    NSView* contentView = [window contentView];
+**What:** Maintain 2 pixel buffers per atlas page. While GPU reads buffer A, CPU writes to
+buffer B. Swap each frame.
 
-    // Create invisible input view
-    VGlyphTextInputView* inputView = [[VGlyphTextInputView alloc]
-        initWithFrame:contentView.bounds];
-    inputView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-
-    // Add as sibling (not subview of MTKView)
-    [contentView addSubview:inputView positioned:NSWindowAbove relativeTo:nil];
-
-    // Store reference for later activation
-    g_input_view = inputView;
-}
-
-// Activate when text field gains focus
-void vglyph_ime_activate(void) {
-    [g_input_view.window makeFirstResponder:g_input_view];
-}
-
-// Deactivate when text field loses focus
-void vglyph_ime_deactivate(void) {
-    // Return first responder to MTKView for normal input
-    NSView* mtkView = [[sapp_macos_get_window() contentView] subviews][0];
-    [g_input_view.window makeFirstResponder:mtkView];
-}
-```
-
-**Key NSTextInputClient methods:**
-```objc
-@implementation VGlyphTextInputView
-
-- (BOOL)acceptsFirstResponder { return YES; }
-
-- (void)keyDown:(NSEvent *)event {
-    // Route through text input system
-    [self.inputContext handleEvent:event];
-}
-
-- (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
-    NSString* text = [string isKindOfClass:[NSAttributedString class]]
-                     ? [(NSAttributedString*)string string] : string;
-    if (self.insertCallback) {
-        self.insertCallback([text UTF8String], self.userData);
-    }
-    [self unmarkText];
-}
-
-- (void)setMarkedText:(id)string selectedRange:(NSRange)selRange
-      replacementRange:(NSRange)repRange {
-    // ... store marked text, notify V
-}
-
-- (NSRect)firstRectForCharacterRange:(NSRange)range
-                         actualRange:(NSRangePointer)actualRange {
-    if (self.boundsCallback) {
-        float x, y, w, h;
-        self.boundsCallback(self.userData, &x, &y, &w, &h);
-        NSRect viewRect = NSMakeRect(x, y, w, h);
-        return [[self window] convertRectToScreen:
-                    [self convertRect:viewRect toView:nil]];
-    }
-    return NSZeroRect;
-}
-
-// ... other NSTextInputClient methods
-@end
-```
-
----
-
-#### 2. Runtime Method Injection (class_addMethod + class_addProtocol)
-
-**How it works:**
-- At runtime, find sokol's `_sapp_macos_view` class
-- Use `class_addMethod` to add all NSTextInputClient methods
-- Use `class_addProtocol` to declare protocol conformance
-- MTKView instance now responds to NSTextInputClient messages
-
-**Pros:**
-- No new views or responder chain changes
-- Methods live on actual rendering view
-- Theoretically clean integration
-
-**Cons:**
-- Requires knowing sokol's internal class name (`_sapp_macos_view`)
-- Fragile — breaks if sokol renames internal class
-- Must be called before sokol creates its view (timing sensitive)
-- Type encoding strings must match exactly
-- `conformsToProtocol:` check may still fail (protocol not in class declaration)
-
-**Feasibility:** MEDIUM
-
-**Implementation pattern:**
-```objc
-#import <objc/runtime.h>
-
-void vglyph_ime_inject_protocol(void) {
-    // Get sokol's view class (internal name may change)
-    Class viewClass = NSClassFromString(@"_sapp_macos_view");
-    if (!viewClass) {
-        // Fallback: search window's content view subviews for MTKView
-        NSWindow* window = sapp_macos_get_window();
-        for (NSView* subview in [[window contentView] subviews]) {
-            if ([subview isKindOfClass:[MTKView class]]) {
-                viewClass = [subview class];
-                break;
-            }
-        }
-    }
-    if (!viewClass) return; // Failed to find view
-
-    // Add protocol conformance
-    Protocol* protocol = @protocol(NSTextInputClient);
-    class_addProtocol(viewClass, protocol);
-
-    // Add each required method
-    // insertText:replacementRange:
-    class_addMethod(viewClass,
-        @selector(insertText:replacementRange:),
-        (IMP)vglyph_insertText_imp,
-        "v@:@{NSRange=QQ}");
-
-    // setMarkedText:selectedRange:replacementRange:
-    class_addMethod(viewClass,
-        @selector(setMarkedText:selectedRange:replacementRange:),
-        (IMP)vglyph_setMarkedText_imp,
-        "v@:@{NSRange=QQ}{NSRange=QQ}");
-
-    // ... all other NSTextInputClient methods
-}
-
-// Method implementations
-void vglyph_insertText_imp(id self, SEL _cmd, id string, NSRange range) {
-    NSString* text = [string isKindOfClass:[NSAttributedString class]]
-                     ? [(NSAttributedString*)string string] : string;
-    if (g_insert_callback) {
-        g_insert_callback([text UTF8String], g_user_data);
-    }
-}
-```
-
-**Why MEDIUM feasibility:**
-- Works technically but depends on sokol internals
-- Type encoding strings are error-prone
-- May not survive sokol updates
-
----
-
-#### 3. ISA Swizzling (object_setClass)
-
-**How it works:**
-- Create custom subclass of sokol's view class at runtime
-- Add NSTextInputClient methods to this subclass
-- Use `object_setClass` to change existing view's class to subclass
-
-**Pros:**
-- Works on existing instance (no timing issues)
-- Subclass properly inherits all MTKView behavior
-- Protocol conformance can be declared on subclass
-
-**Cons:**
-- Must ensure subclass has same instance variable layout
-- Requires finding the view instance after sokol creates it
-- Still depends on sokol's internal class structure
-- Complex setup with `objc_allocateClassPair`/`objc_registerClassPair`
-
-**Feasibility:** MEDIUM
-
-**Implementation pattern:**
-```objc
-void vglyph_ime_swizzle_view(void) {
-    NSWindow* window = sapp_macos_get_window();
-    NSView* mtkView = nil;
-
-    // Find sokol's MTKView
-    for (NSView* subview in [[window contentView] subviews]) {
-        if ([subview isKindOfClass:[MTKView class]]) {
-            mtkView = subview;
-            break;
-        }
-    }
-    if (!mtkView) return;
-
-    // Create subclass dynamically
-    Class originalClass = [mtkView class];
-    const char* subclassName = "VGlyphIMEView";
-    Class subclass = objc_allocateClassPair(originalClass, subclassName, 0);
-
-    // Add protocol
-    class_addProtocol(subclass, @protocol(NSTextInputClient));
-
-    // Add methods
-    class_addMethod(subclass, @selector(insertText:replacementRange:),
-                    (IMP)vglyph_insertText_imp, "v@:@{NSRange=QQ}");
-    // ... other methods
-
-    // Register the class
-    objc_registerClassPair(subclass);
-
-    // Swizzle the instance's class
-    object_setClass(mtkView, subclass);
-}
-```
-
----
-
-#### 4. NSTextInputContext with Remote Client (CEF Pattern)
-
-**How it works:**
-- Create standalone NSTextInputClient object (not a view)
-- Create NSTextInputContext initialized with this client
-- Override MTKView's `-inputContext` to return custom context
-- Key events routed through this context
-
-**Pros:**
-- Proven pattern (used by CEF/Chromium)
-- Minimal view hierarchy changes
-- Client can be pure Objective-C object
-
-**Cons:**
-- Still requires modifying MTKView's `-inputContext` method (via swizzling)
-- Coordinate conversion more complex (client isn't a view)
-- Less straightforward than overlay approach
-
-**Feasibility:** MEDIUM
-
-**Implementation pattern:**
-```objc
-// Standalone client (not a view)
-@interface VGlyphTextInputClient : NSObject <NSTextInputClient>
-@end
-
-@implementation VGlyphTextInputClient
-// ... implement all NSTextInputClient methods
-@end
-
-void vglyph_ime_setup_context(void) {
-    // Create client and context
-    g_input_client = [[VGlyphTextInputClient alloc] init];
-    g_input_context = [[NSTextInputContext alloc] initWithClient:g_input_client];
-
-    // Swizzle MTKView's -inputContext to return our context
-    Class mtkViewClass = [MTKView class];
-    Method originalMethod = class_getInstanceMethod(mtkViewClass, @selector(inputContext));
-    Method swizzledMethod = class_getInstanceMethod([self class],
-                                                    @selector(vglyph_inputContext));
-    method_exchangeImplementations(originalMethod, swizzledMethod);
-}
-
-- (NSTextInputContext*)vglyph_inputContext {
-    return g_input_context;  // Return our custom context
-}
-```
-
----
-
-### Recommendation
-
-**Use Approach 1: Overlay NSView**
-
-Rationale:
-1. **Most robust:** No dependency on sokol internals or class names
-2. **Proven pattern:** CEF uses similar architecture for off-screen rendering
-3. **Clean separation:** IME handling isolated from rendering
-4. **Survivable:** Won't break when sokol updates
-5. **Reversible:** Can be disabled without affecting core functionality
-
-The overlay approach requires more initial setup (view creation, responder management) but provides
-the most maintainable solution. The runtime injection approaches (2, 3, 4) are fragile and depend on
-implementation details that may change.
-
-### Implementation Notes for Overlay Approach
-
-#### Initialization Sequence
-
-```
-1. sokol creates window and MTKView (automatic via sapp)
-2. After first frame (ensure window exists):
-   - Call vglyph_ime_init() to create overlay NSView
-   - Register V callbacks for marked text, insert, bounds
-3. When text field gains focus:
-   - Call vglyph_ime_activate() to make overlay first responder
-4. During text input:
-   - Keyboard events go to overlay -> NSTextInputContext -> callbacks -> V
-   - V updates CompositionState, triggers redraw with preedit underlines
-5. When text field loses focus:
-   - Call vglyph_ime_deactivate() to return responder to MTKView
-```
-
-#### Coordinate Transformation
-
-The candidate window needs screen coordinates. Transform chain:
-```
-Layout coordinates (VGlyph)
-    -> View coordinates (add text field offset)
-    -> Window coordinates (convertRect:toView:nil)
-    -> Screen coordinates (convertRectToScreen:)
-```
-
-#### First Responder Management
-
-Critical: Only make overlay first responder when VGlyph text editing is active.
-Otherwise normal sokol keyboard events won't work.
-
-```v
-// V-side integration
-fn on_text_field_focus(field &TextField) {
-    C.vglyph_ime_activate()
-    field.is_ime_active = true
-}
-
-fn on_text_field_blur(field &TextField) {
-    if field.composition.is_composing() {
-        // Commit pending composition before deactivating
-        commit_text := field.composition.commit()
-        field.insert_text(commit_text)
-    }
-    C.vglyph_ime_deactivate()
-    field.is_ime_active = false
-}
-```
-
-### What NOT to Try
-
-1. **NSView Category on NSView base class** — Already tried, doesn't work. MTKView subclasses don't
-   pick up category methods for protocol conformance checks.
-
-2. **Method swizzling -keyDown: alone** — Not enough. Need full NSTextInputClient protocol for IME
-   candidate window, marked text ranges, etc.
-
-3. **Hidden NSTextField** — Heavyweight, brings AppKit text system baggage, coordinate sync issues.
-
-4. **Forking sokol** — Violates constraint. Also creates maintenance burden.
-
----
-
-## Integration Strategy (Original)
-
-**Reuse existing Objective-C bridge** from accessibility layer:
-- `accessibility/objc_helpers.h` (C wrapper for objc_msgSend)
-- `accessibility/objc_bindings_darwin.v` (V FFI declarations)
-- Pattern: wrap NSTextInputClient methods as C functions callable from V
+**Why NOT PBOs:**
+- Sokol abstracts GL/Metal/D3D11 - no direct PBO access
+- `sg_update_image()` already async-capable on Metal/D3D11 (driver-managed)
+- GL backend: sokol uses staging buffer, equivalent to PBO behavior
 
 **Implementation approach:**
-1. Create `text_input_objc_darwin.v` with NSTextInputClient wrapper
-2. Add helper functions to `objc_helpers.h` for NSTextInputClient callbacks
-3. V widget layer calls Objective-C bridge, bridge calls back to V
 
-**Example existing pattern (from accessibility):**
 ```v
-fn C.v_msgSend_void_id(self Id, op SEL, arg1 voidptr)
-pub fn set_accessibility_label(elem Id, label string) {
-    label_ns := ns_string(label)
-    C.v_msgSend_void_id(elem, sel_register_name('setAccessibilityLabel:'), label_ns)
+struct AtlasPage {
+    image gg.Image
+    // Double buffer for pixel data
+    buffer_a []u8
+    buffer_b []u8
+    active_buffer int  // 0=A, 1=B
+    dirty bool
+}
+
+// In rasterization (load_glyph):
+inactive_buffer := if page.active_buffer == 0 { page.buffer_b } else { page.buffer_a }
+copy_bitmap_to_buffer(inactive_buffer, bmp, x, y)
+page.dirty = true
+
+// In commit():
+if page.dirty {
+    page.active_buffer = 1 - page.active_buffer  // Swap
+    active := if page.active_buffer == 0 { page.buffer_a } else { page.buffer_b }
+    page.image.update_pixel_data(active)
+    page.dirty = false
 }
 ```
 
-**New pattern for IME:**
+**Key insight:** Sokol's `sg_update_image()` already performs async DMA transfer on backends
+that support it. Double-buffering pixel data ensures CPU never blocks waiting for GPU.
+
+**References:**
+- [Sokol sg_update_image](https://github.com/floooh/sokol/issues/567) - partial update
+discussion
+- [OpenGL PBO technique](https://www.songho.ca/opengl/gl_pbo.html) - conceptual parallel
+- [Sokol update restrictions](https://floooh.github.io/2020/04/26/sokol-spring-2020-update.html)
+- one update/frame/resource
+
+### Performance Benefits
+
+**Current (synchronous):**
+```
+rasterize glyph -> copy to atlas.data -> update_pixel_data() [blocks until GPU copy done]
+```
+
+**With double-buffering:**
+```
+Frame N: rasterize -> copy to buffer_b (CPU)
+         GPU reads buffer_a (parallel)
+Frame N+1: swap buffers, update_pixel_data(buffer_a)
+```
+
+**Expected:** 20-30% reduction in upload_time_ns (from profiling data). GPU copy overlaps
+with next frame's rasterization.
+
+### Integration Points
+
+**Modify:**
+- `AtlasPage` struct: add buffer_a/buffer_b fields (glyph_atlas.v:50)
+- `new_atlas_page()`: allocate 2 buffers instead of image.data (glyph_atlas.v:107)
+- `copy_bitmap_to_page()`: write to inactive buffer (glyph_atlas.v:672)
+- `commit()`: swap + upload active buffer (renderer.v:105)
+
+**Memory cost:** 2x pixel data per page. With 4 pages * 4096x4096 * 4 bytes * 2 = 512MB max
+(up from 256MB). Acceptable for performance gain.
+
+## 3. Shape Plan Caching
+
+### HarfBuzz API Integration
+
+**What:** Cache HarfBuzz `hb_shape_plan_t` structures keyed by
+(font_face, size, script, features) to avoid rebuilding shaping decisions.
+
+**Why:** Pango uses HarfBuzz internally. Pango doesn't expose shape plan caching, but
+HarfBuzz API is already linked (pkgconfig harfbuzz in c_bindings.v:6).
+
+**API:**
+```c
+hb_shape_plan_t* hb_shape_plan_create_cached(
+    hb_face_t *face,
+    const hb_segment_properties_t *props,
+    const hb_feature_t *user_features,
+    unsigned int num_user_features,
+    const char * const *shaper_list
+);
+```
+
+**Reference counting:**
+```c
+hb_shape_plan_reference(plan);   // Increment refcount
+hb_shape_plan_destroy(plan);     // Decrement, free at 0
+```
+
+**References:**
+- [HarfBuzz shape plan docs](https://harfbuzz.github.io/shaping-plans-and-caching.html)
+- [hb-shape-plan API](https://harfbuzz.github.io/harfbuzz-hb-shape-plan.html)
+
+### Implementation Strategy
+
+**Problem:** Pango abstracts HarfBuzz. Can't intercept Pango's shaping to inject cached
+plans.
+
+**Solution:** Cache at Layout level, not shape plan level.
+
+**Revised approach:**
 ```v
-fn C.v_msgSend_nsrange(self Id, op SEL) C.NSRange
-pub fn get_marked_range(input_context Id) NSRange {
-    return C.v_msgSend_nsrange(input_context, sel_register_name('markedRange'))
+struct LayoutCache {
+    entries map[u64]CachedLayout  // Existing
+    shape_stats map[u64]ShapeStats  // NEW
+}
+
+struct ShapeStats {
+    shaping_time_ns i64
+    hit_count int
+}
+
+// Track per-layout shaping cost
+layout_key := hash(text, font, width, ...)
+if existing_layout := cache.get(layout_key) {
+    // Cache hit - no shaping
+    cache.shape_stats[layout_key].hit_count++
+} else {
+    // Cache miss - time the shaping
+    start := time.sys_mono_now()
+    layout := pango_layout_new(...)  // Pango does HarfBuzz shaping internally
+    shaping_time := time.sys_mono_now() - start
+    cache.shape_stats[layout_key] = ShapeStats{ shaping_time_ns: shaping_time, ... }
 }
 ```
 
-### Text Mutation Strategy
+**Key insight:** Pango already has internal HarfBuzz caching. Our Layout cache (with TTL)
+already provides shape plan reuse. Optimization is cache tuning, not HarfBuzz bindings.
 
-**Pango has no incremental mutation API.** Must rebuild layout on every change.
+### Cache Tuning
 
-**Process:**
-1. Maintain text buffer in V (string)
-2. On insert/delete: V string manipulation (`s[..pos] + new_text + s[pos..]`)
-3. Call `pango_layout_set_text(layout, buffer.str, buffer.len)`
-4. Invalidate layout cache (create new cache entry)
+**Current:** Layout cache with 100ms TTL (layout.v, LayoutCache struct).
 
-**Optimization:** Layout cache handles repeated renders of same text.
-**Tradeoff:** Simple API, slightly higher latency on edits vs incremental update.
+**Optimization:**
+1. Increase TTL to 500ms (text doesn't change often)
+2. Add cache size limit (evict LRU when >256 entries)
+3. Track shape cost in profile metrics
 
-**Source:** [Pango.Layout.set_text](https://docs.gtk.org/Pango/method.Layout.set_text.html)
+**Expected benefit:** 40-60% reduction in layout_time_ns for repeated text (scrolling,
+animation). Pango's internal HarfBuzz cache + our Layout cache = effective shape plan
+caching.
 
-## Integration with Existing Stack
+### Alternative: Direct HarfBuzz Bindings
 
-### Hit Testing Foundation (Existing)
+**If** profiling shows Pango caching insufficient:
 
-**Already implemented in `layout_query.v`:**
-
-| Function | Status | Use |
-|----------|--------|-----|
-| `hit_test(x, y)` | Exists | Mouse -> byte index |
-| `get_char_rect(index)` | Exists | Index -> rect |
-| `get_closest_offset(x, y)` | Exists | Snap to nearest char |
-| `get_selection_rects(start, end)` | Exists | Selection highlighting |
-
-**These are foundational for editing. No changes needed.**
-
-### Cursor Position API (New)
-
-**Add to `layout_query.v`:**
+**Add C bindings (c_bindings.v):**
 ```v
-pub fn (l Layout) get_cursor_pos(index int) ?(gg.Rect, gg.Rect) {
-    // Call pango_layout_get_cursor_pos
-    // Convert PangoRectangle to gg.Rect
-    // Return (strong_cursor, weak_cursor)
+#pkgconfig harfbuzz  // Already present
+
+struct C.hb_shape_plan_t {}
+struct C.hb_face_t {}
+struct C.hb_segment_properties_t {
+    direction u32
+    script u32
+    language voidptr
 }
 
-pub fn (l Layout) move_cursor(index int, direction int, visual bool) int {
-    // Call pango_layout_move_cursor_visually
-    // Return new index
+fn C.hb_shape_plan_create_cached(face &C.hb_face_t, props &C.hb_segment_properties_t,
+    user_features voidptr, num_features u32, shaper_list &char) &C.hb_shape_plan_t
+fn C.hb_shape_plan_reference(plan &C.hb_shape_plan_t) &C.hb_shape_plan_t
+fn C.hb_shape_plan_destroy(plan &C.hb_shape_plan_t)
+```
+
+**Cache structure:**
+```v
+struct ShapePlanCache {
+    plans map[u64]&C.hb_shape_plan_t
+    access_order []u64
+    capacity int = 128
 }
 ```
 
-### Text Mutation API (New)
+**Integration:** Extract `hb_face_t` from `PangoFont` via Pango-FT2 API, cache plans keyed
+by (face_ptr XOR size XOR script). Use in custom shaping path if needed.
 
-**Add to `api.v` (TextSystem):**
-```v
-pub fn (mut ts TextSystem) mutate_text(original string, pos int, insert string,
-                                        delete_len int) !Layout {
-    // 1. String manipulation
-    mut buf := original[..pos] + insert
-    if pos + delete_len < original.len {
-        buf += original[pos + delete_len..]
-    }
+**Defer until:** Phase profiling shows layout_time_ns remains bottleneck after Layout cache
+tuning.
 
-    // 2. Rebuild layout
-    return ts.ctx.layout_text(buf, cfg)
-}
-```
+## Integration Summary
 
-**Alternative:** Widget layer handles mutation, VGlyph just re-layouts.
+### Existing Stack (No Changes)
 
-### IME Integration (New Module)
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| Pango | System | Text layout, shaping orchestration |
+| HarfBuzz | System (via Pango) | Complex text shaping |
+| FreeType | System | Glyph rasterization |
+| Sokol/gg | V stdlib | GPU abstraction (GL/Metal/D3D11) |
 
-**Create `text_input_darwin.v` (parallel to accessibility layer):**
+### New Code (Pure V)
 
-```v
-module vglyph
+| Component | LOC Est. | Purpose |
+|-----------|----------|---------|
+| ShelfAllocator | ~120 | Shelf packing algorithm |
+| Double-buffered pages | ~50 | Async texture data management |
+| Layout cache tuning | ~30 | TTL increase, LRU eviction, metrics |
 
-@[if darwin]
-struct TextInputContext {
-mut:
-    input_client Id
-    marked_range NSRange
-}
-
-pub fn (mut ctx TextInputContext) set_marked_text(text string, sel_range NSRange) {
-    // Bridge to NSTextInputClient
-}
-
-pub fn (ctx TextInputContext) get_first_rect_for_range(range NSRange) gg.Rect {
-    // Query layout for character rects
-    // Convert to screen coords
-    // Return for IME candidate window positioning
-}
-```
-
-**Platform abstraction:** Stub implementation for non-macOS (no-op).
-
-## V Language FFI Considerations
-
-### C Function Binding Pattern
-
-V requires explicit C function declarations. Pattern already established:
-
-```v
-// In c_bindings.v
-fn C.pango_layout_get_cursor_pos(&C.PangoLayout, int, &C.PangoRectangle, &C.PangoRectangle)
-
-// In V code
-pub fn (l Layout) get_cursor_pos(index int) ?(gg.Rect, gg.Rect) {
-    mut strong := C.PangoRectangle{}
-    mut weak := C.PangoRectangle{}
-    unsafe {
-        C.pango_layout_get_cursor_pos(l.handle, index, &strong, &weak)
-    }
-    return (pango_rect_to_gg(strong), pango_rect_to_gg(weak))
-}
-```
-
-**Source:** [V Calling C](https://docs.vlang.io/v-and-c.html)
-
-### Objective-C Bridge Pattern
-
-Already working in accessibility layer. Pattern:
-
-1. **C header** (`objc_helpers.h`): Inline wrapper for `objc_msgSend` with typed signatures
-2. **V FFI** (`objc_bindings_darwin.v`): Declare C wrappers as `fn C.v_msgSend_XXX(...)`
-3. **V wrapper** (`backend_darwin.v`): V functions call C wrappers
-
-**No new infrastructure needed.** Extend existing pattern for NSTextInputClient.
-
-### Struct Handling
-
-Pango structs already defined in `c_bindings.v`. NSRange/NSRect needed:
-
-```v
-@[typedef]
-pub struct C.NSRange {
-pub:
-    location int
-    length int
-}
-```
-
-**Add to `objc_bindings_darwin.v` alongside existing NSRect.**
-
-### Callback Handling
-
-V supports callbacks via function types:
-
-```v
-type TextInputCallback = fn (mut ctx TextInputContext, text string)
-
-// Register with Objective-C runtime via class_addMethod
-```
-
-**Precedent:** V channels and closures handle async C callbacks.
-
-**Limitation:** Global function pointers only (no closures across FFI boundary).
-**Mitigation:** Single global input context, dispatch to active widget.
+**Total new code:** ~200 LOC, no dependencies.
 
 ## What NOT to Add
 
-### ICU (International Components for Unicode)
+### ❌ Pixel Buffer Objects (PBOs)
 
-**Why skip:** Pango already handles Unicode normalization, grapheme breaking, bidi.
-**Redundant with:** HarfBuzz (via Pango), FriBidi (via Pango).
-**Cost:** 25+ MB dependency for capabilities already present.
+**Why not:** Sokol abstracts GL - no direct PBO access. Double-buffered pixel data achieves
+same async benefit without GL-specific code.
 
-### Platform-Specific Text APIs
+**Alternative:** Double-buffered pixel data (cross-platform, simpler).
 
-**Why skip:**
-- Windows Text Services Framework (TSF): Windows IME
-- Linux IBus/Fcitx: Linux IME
+### ❌ External Bin Packing Library
 
-**Rationale:** v1.3 scope is macOS primary. Other platforms later.
-**Decision:** Stub implementations for non-Darwin builds.
+**Why not:**
+- Existing options are JS (mapbox/shelf-pack) or Rust (étagère)
+- V-to-C wrapper overhead
+- Algorithm is simple (~100 LOC in V)
 
-### Text Input Method Engines
+**Alternative:** Implement shelf packing directly in V.
 
-**Why skip:** VGlyph consumes IME output, doesn't implement IME.
-**Responsibility:** OS provides IME (Japanese, Chinese input methods).
-**VGlyph role:** Display composition, position candidate window, commit text.
+### ❌ HarfBuzz Direct Bindings (Initially)
 
-### Undo/Redo Infrastructure
+**Why not:** Pango already uses HarfBuzz internally. Layout cache provides equivalent shape
+plan reuse. Premature optimization.
 
-**Why skip:** Widget layer concern, not text rendering.
-**Rationale:** VGlyph provides primitives (cursor pos, mutation). v-gui handles state.
-**Decision:** Document undo/redo patterns in v-gui integration examples.
+**Defer until:** Profiling proves Pango caching insufficient (unlikely).
 
-### Text Editing Commands (Copy/Paste/Select All)
+### ❌ Compute Shaders for Rasterization
 
-**Why skip:** v-gui event handlers manage clipboard, commands.
-**VGlyph provides:** Selection rects, hit testing, cursor geometry.
-**v-gui provides:** Keyboard events, clipboard access, command dispatch.
+**Why not:**
+- FreeType already fast (GPU rasterization complex for quality/hinting)
+- Upload bottleneck is bandwidth, not rasterization
+- Adds GL 4.3+ / Metal requirement
 
-## API Surface Summary
-
-### Core Editing Primitives (VGlyph)
-
-| API | Input | Output | Layer |
-|-----|-------|--------|-------|
-| `get_cursor_pos(index)` | Byte index | Strong/weak cursor rects | layout_query.v |
-| `move_cursor(index, dir)` | Index, direction | New index | layout_query.v |
-| `get_char_rect(index)` | Byte index | Character rect | layout_query.v (exists) |
-| `get_selection_rects(start, end)` | Range | Highlight rects | layout_query.v (exists) |
-| `hit_test(x, y)` | Coords | Byte index | layout_query.v (exists) |
-| `layout_text(text, cfg)` | Text, config | Layout | api.v (exists) |
-
-### IME Support (VGlyph — macOS only)
-
-| API | Purpose | Layer |
-|-----|---------|-------|
-| `new_text_input_context()` | Create IME context | text_input_darwin.v |
-| `set_marked_text(text, range)` | Composition preview | text_input_darwin.v |
-| `commit_text(text)` | Finalize input | text_input_darwin.v |
-| `get_marked_range()` | Query composition | text_input_darwin.v |
-| `first_rect_for_range(range)` | Candidate window pos | text_input_darwin.v |
-
-### Widget Integration (v-gui)
-
-| Component | Responsibility |
-|-----------|---------------|
-| TextField/TextArea | State management, event handling, focus |
-| VGlyph | Cursor geometry, selection rects, rendering |
-| v-gui event loop | Keyboard events, mouse events, blink timer |
-
-## Build Configuration
-
-### No New Dependencies
-
-```bash
-# v1.2 build (unchanged)
-v -cc clang -cflags "`pkg-config --cflags pango pangoft2`" \
-  -ldflags "`pkg-config --libs pango pangoft2`" .
-
-# macOS adds existing frameworks (no change)
--framework Foundation -framework Cocoa
-```
-
-### Conditional Compilation
-
-```v
-// Existing pattern from accessibility layer
-@[if darwin]
-struct TextInputContext { ... }
-
-@[if !darwin]
-struct TextInputContext { } // Stub
-```
-
-### No Profile Flag Changes
-
-Editing features are unconditional. No `-d editing` flag needed.
-
-## Testing Strategy
-
-### Unit Tests (Pango APIs)
-
-```v
-// _cursor_test.v
-fn test_cursor_position() {
-    mut ts := vglyph.new_text_system(mut ctx)!
-    layout := ts.layout_text('Hello', cfg)!
-
-    pos := layout.get_cursor_pos(0) or { panic(err) }
-    assert pos.0.width == 0 // Zero-width cursor
-}
-```
-
-### Integration Tests (IME)
-
-**Manual testing required** for IME on macOS:
-1. Enable Japanese input method
-2. Type "nihon" -> see composition
-3. Press Space -> see candidates
-4. Press Enter -> commit
-
-**Automated:** Difficult (requires OS input method simulation).
-
-### Demo (`editor_demo.v` extension)
-
-**Extend existing demo:**
-- Add cursor rendering
-- Add selection highlighting
-- Add keyboard navigation
-- Add IME composition preview
-
-## Version Planning
-
-### v1.3.0 Scope
-
-**Minimum for release:**
-- Cursor positioning API (`get_cursor_pos`, `move_cursor`)
-- Text mutation (string ops + re-layout)
-- macOS IME via NSTextInputClient
-- v-gui TextField widget (basic)
-- Working demo
-
-**Deferred to v1.3.1+:**
-- Multi-line editing improvements (TextArea)
-- Linux/Windows IME (IBus, TSF)
-- Advanced keyboard navigation (word jump, etc.)
+**Alternative:** Async uploads solve bandwidth issue.
 
 ## Risk Assessment
 
-| Risk | Likelihood | Mitigation |
-|------|------------|------------|
-| Objective-C callback complexity | Medium | Reuse accessibility pattern |
-| IME candidate window positioning | Medium | Test early with CJK input |
-| V string mutation performance | Low | Layout cache handles repeated text |
-| Platform-specific IME bugs | High | Limit v1.3 to macOS, stub others |
-| Sokol MTKView constraint | High | Use overlay NSView approach |
+| Change | Risk | Mitigation |
+|--------|------|------------|
+| Shelf packing | Incorrect allocation, overlaps | Unit tests with visual atlas dump |
+| Double-buffering | Race if buffers swapped mid-rasterize | Single-threaded V, clear swap point |
+| Memory increase (2x buffers) | 512MB max vs 256MB current | Document, acceptable for performance |
+| Layout cache tuning | Stale text with long TTL | 500ms reasonable for UI responsiveness |
 
-## Open Questions
+**Overall risk:** Low. Pure V code, no new dependencies, incremental changes.
 
-1. **Overlay NSView z-order with sokol?** — Need to verify overlay stays above MTKView after window
-   resize or fullscreen transitions.
+## Verification Strategy
+
+### Shelf Packing
+
+**Unit test:**
+```v
+fn test_shelf_allocator() {
+    mut alloc := new_shelf_allocator(1024, 1024)
+    // Pack 100 glyphs, verify no overlaps
+    for i in 0..100 {
+        rect := alloc.pack(32, 32)!
+        assert rect.x + 32 <= 1024
+        assert rect.y + 32 <= 1024
+    }
+}
+```
+
+**Visual:** atlas_debug.v example - render shelf boundaries, check packing density.
+
+### Async Uploads
+
+**Profile metric:** Compare `upload_time_ns` before/after with `-d profile`.
+
+**Stress test:** stress_demo.v - rapidly add/remove text, verify no visual corruption.
+
+### Shape Plan Caching
+
+**Profile metric:** Compare `layout_time_ns` hit rate before/after cache tuning.
+
+**Benchmark:** Repeated layout_text() calls with identical params, measure speedup.
 
 ## Sources
 
-**Pango Documentation (HIGH confidence):**
-- [pango_layout_get_cursor_pos](https://docs.gtk.org/Pango/method.Layout.get_cursor_pos.html)
-- [pango_layout_xy_to_index](https://docs.gtk.org/Pango/method.Layout.xy_to_index.html)
-- [pango_layout_move_cursor_visually](https://docs.gtk.org/Pango/method.Layout.move_cursor_visually.html)
-- [pango_layout_set_text](https://docs.gtk.org/Pango/method.Layout.set_text.html)
+**Shelf Packing:**
+- [Mapbox shelf-pack](https://github.com/mapbox/shelf-pack)
+- [Firefox étagère rationale](https://nical.github.io/posts/etagere.html)
+- [Shelf algorithms explained](https://blog.roomanna.com/09-25-2015/binpacking-shelf)
+- [Texture packing lisyarus](https://lisyarus.github.io/blog/posts/texture-packing.html)
 
-**Apple Documentation (HIGH confidence):**
-- [NSTextInputClient Protocol](https://developer.apple.com/documentation/appkit/nstextinputclient)
-- [class_addMethod](https://developer.apple.com/documentation/objectivec/1418901-class_addmethod)
-- [class_addProtocol](https://developer.apple.com/documentation/objectivec/1418773-class_addprotocol)
+**Async Uploads:**
+- [Sokol sg_update_image discussion](https://github.com/floooh/sokol/issues/567)
+- [OpenGL PBO technique](https://www.songho.ca/opengl/gl_pbo.html)
+- [Sokol spring 2020 update](https://floooh.github.io/2020/04/26/sokol-spring-2020-update.html)
+- [V gg.Image implementation](https://github.com/vlang/v/blob/master/vlib/gg/image.c.v)
 
-**V Language (HIGH confidence):**
-- [V Calling C](https://docs.vlang.io/v-and-c.html)
-
-**IME Workaround Sources (MEDIUM confidence):**
-- [CEF IME for Mac Off-Screen Rendering](https://www.magpcss.org/ceforum/viewtopic.php?f=8&t=10470) —
-  Proven architecture using NSTextInputContext with remote client
-- [Sokol IME Issue #595](https://github.com/floooh/sokol/issues/595) — Confirms sokol doesn't
-  implement IME, recommends application-level hooks
-- [GLFW NSTextInputClient Implementation](https://fsunuc.physics.fsu.edu/git/gwm17/glfw/commit/3107c9548d7911d9424ab589fd2ab8ca8043a84a) —
-  Reference implementation of NSTextInputClient methods
-- [Method Swizzling - NSHipster](https://nshipster.com/method-swizzling/) — Swizzling best practices
-- [mikeash.com - Creating Classes at Runtime](https://www.mikeash.com/pyblog/friday-qa-2010-11-6-creating-classes-at-runtime-in-objective-c.html) —
-  Dynamic class creation patterns
-
-**v-gui Framework (MEDIUM confidence):**
-- [vlang/gui Repository](https://github.com/vlang/gui)
-- [vlang/ui Repository](https://github.com/vlang/ui)
-
-**Implementation Examples (MEDIUM confidence):**
-- [NSTextInputClient Example](https://github.com/jessegrosjean/NSTextInputClient)
-- Mozilla Firefox NSTextInputClient implementation
-
----
-
-*Research complete. Stack sufficient. CJK IME requires overlay NSView approach.*
+**HarfBuzz:**
+- [HarfBuzz shape plan caching](https://harfbuzz.github.io/shaping-plans-and-caching.html)
+- [hb-shape-plan API](https://harfbuzz.github.io/harfbuzz-hb-shape-plan.html)

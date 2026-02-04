@@ -1,508 +1,383 @@
-# Architecture Research: CJK IME Integration
+# Architecture Research: Performance Optimization
 
-**Domain:** CJK (Chinese/Japanese/Korean) Input Method Editor support for VGlyph
-**Researched:** 2026-02-03
-**Confidence:** MEDIUM (architecture patterns verified, sokol workaround requires implementation)
+**Domain:** Text rendering library performance enhancement
+**Researched:** 2026-02-04
+**Confidence:** MEDIUM
 
-## Summary
+## Current Architecture
 
-CJK IME integration requires solving the "sokol MTKView problem": VGlyph's existing NSTextInputClient
-implementation uses an NSView category, but sokol renders through MTKView which doesn't inherit
-category methods. The IME system queries MTKView directly, bypassing VGlyph's bridge.
+VGlyph uses row-based atlas allocation with multi-page support:
 
-**Key architectural decision:** Use a transparent overlay NSView that sits above the MTKView, receives
-IME events, and forwards them to VGlyph's existing CompositionState. This avoids modifying sokol while
-leveraging VGlyph's existing infrastructure (composition.v, ime_bridge_macos.m, clause rendering).
+**GlyphAtlas (glyph_atlas.v):**
+- Multi-page: 4 max pages, LRU page eviction
+- Row-based allocation: fills left-to-right, moves to next row when full
+- Allocation: `insert_bitmap()` handles placement, `grow_page()` expands height
+- Pages: separate textures (sokol compatibility), dynamic growth from 1024→4096
 
-The existing architecture is well-designed for this addition:
-- `CompositionState` already tracks multi-clause preedit with style info
-- `ClauseRects` provides geometry for underline rendering
-- `get_composition_bounds()` returns bounds for candidate window
-- Callbacks registered via `ime_register_callbacks()`
+**Renderer (renderer.v):**
+- Glyph cache: 4096-entry LRU map keyed by (face XOR (index<<2|bin))
+- Cache eviction: O(n) scan over cache_ages map to find oldest
+- Load path: `get_or_load_glyph()` → `load_glyph()` → `insert_bitmap()` → commit
+- GPU upload: `commit()` calls `image.update_pixel_data()` on dirty pages
 
-**What's missing:** The native bridge that actually receives IME events. The current NSView category
-approach doesn't work; we need an overlay view that does.
+**Context (context.v):**
+- MetricsCache: 256-entry LRU for FreeType metrics (ascent/descent)
+- Key: u64 face pointer XOR (size << 32)
+- No shape plan cache currently
 
-## New Components
+**Layout (layout.v):**
+- Pango integration: calls `pango_layout_new()` → `pango_layout_get_iter()` → process
+- No shape plan caching at HarfBuzz level
+- Extracts runs/glyphs into V structs, discards PangoLayout
 
-### Component 1: IMEOverlayView (Objective-C)
+## Shelf Packing Integration
 
-**Purpose:** Transparent NSView overlay conforming to NSTextInputClient protocol
-**Location:** `ime_overlay_macos.m` (new file in vglyph root)
-**Interfaces with:** ime_bridge_macos.h callbacks, sokol window via sapp_macos_get_window()
+### Modified Components
 
-**Design:**
-```objc
-@interface VGlyphIMEOverlayView : NSView <NSTextInputClient>
-@property (nonatomic, strong) NSTextInputContext* inputContext;
-@property (nonatomic, assign) NSRect textBounds;  // Updated from V
-@end
+**GlyphAtlas.insert_bitmap() (glyph_atlas.v:487-576):**
+- Replace row-based logic with shelf allocator
+- Current: advances cursor_x, wraps to next row when full
+- New: track shelves with varying heights, pack into best-fit shelf
 
-@implementation VGlyphIMEOverlayView
-- (instancetype)initWithFrame:(NSRect)frameRect {
-    self = [super initWithFrame:frameRect];
-    if (self) {
-        _inputContext = [[NSTextInputContext alloc] initWithClient:self];
-        [self setWantsLayer:YES];
-        [self.layer setBackgroundColor:CGColorGetConstantColor(kCGColorClear)];
-    }
-    return self;
-}
+**AtlasPage struct (glyph_atlas.v:50-62):**
+- Add shelf tracking fields
+- Current: `cursor_x`, `cursor_y`, `row_height`
+- New: `shelves []Shelf` where `Shelf { y, height, cursor_x, free_width }`
 
-// NSTextInputClient protocol methods forward to existing callbacks
-- (void)insertText:(id)string replacementRange:(NSRange)range { ... }
-- (void)setMarkedText:(id)string selectedRange:(NSRange)sel replacementRange:(NSRange)rep { ... }
-- (NSRect)firstRectForCharacterRange:(NSRange)range actualRange:(NSRangePointer)actual { ... }
-// ... etc
-@end
-```
+### New Data Structures
 
-**Key properties:**
-- Transparent (no rendering, only event capture)
-- First responder for key events during text editing
-- Positioned exactly over text area (bounds updated from V)
-- Owns NSTextInputContext for IME session management
-
-### Component 2: IME Overlay Manager (V)
-
-**Purpose:** Initialize, position, and manage the overlay view lifecycle
-**Location:** `ime_manager_darwin.v` (new file)
-**Interfaces with:** ime_overlay_macos.m via C FFI, editor state, sokol window
-
-**API:**
 ```v
-// Initialize overlay (call once at init)
-pub fn ime_init_overlay(window voidptr) bool
+struct Shelf {
+mut:
+    y          int  // Y position of shelf baseline
+    height     int  // Fixed height for this shelf
+    cursor_x   int  // Current X position for next glyph
+    free_width int  // Remaining width in shelf
+}
 
-// Update overlay bounds when text area moves/resizes
-pub fn ime_set_overlay_bounds(x f32, y f32, width f32, height f32)
-
-// Activate IME input (give overlay key focus)
-pub fn ime_activate()
-
-// Deactivate IME input (return key focus to main view)
-pub fn ime_deactivate()
-
-// Check if overlay is active
-pub fn ime_is_active() bool
+struct ShelfAllocator {
+mut:
+    shelves []Shelf  // Active shelves, sorted by Y
+    page_width  int
+    page_height int
+}
 ```
 
-**Stub file for non-darwin:**
+### Integration Points
+
+**Allocation path:** `insert_bitmap()` calls shelf allocator instead of inline row logic
+
+**Best-height-fit heuristic:** find shelf where glyph height minimizes wasted vertical space
+
+**Shelf creation:** when no shelf fits, create new shelf at `max(shelf.y+shelf.height)`
+
+**Page growth:** still handled by `grow_page()`, shelves span full width
+
+**Compatibility:** maintains same error returns, CachedGlyph output, reset behavior
+
+### Algorithm Choice
+
+WebRender's shelf allocator (etagere) uses **Shelf Best Height Fit**:
+- Packs into shelf minimizing wasted vertical space
+- Simple, fast, works best for similar-height items (glyphs)
+- Guillotine better packing but slower (thousands of items)
+
+VGlyph glyphs have similar heights per font size → shelf packing suitable.
+
+**Confidence:** HIGH (verified with WebRender production use)
+
+### Build Order
+
+1. Extract shelf allocator into separate module `shelf_packer.v`
+2. Add shelf fields to AtlasPage (maintains backward compatibility)
+3. Replace `insert_bitmap()` logic with shelf allocator calls
+4. Test with existing atlas tests (should pass with better utilization)
+
+## Async Texture Updates Integration
+
+### Modified Components
+
+**Renderer.commit() (renderer.v:105-119):**
+- Current: synchronous `image.update_pixel_data()` per dirty page
+- New: queue updates, upload with PBO or non-blocking path
+
+**GlyphAtlas.insert_bitmap() (glyph_atlas.v:487-576):**
+- Marks pages dirty (no change)
+- May need staging buffer instead of direct atlas data write
+
+### New Data Structures
+
 ```v
-// ime_manager_stub.v
-@[if !darwin]
-pub fn ime_init_overlay(window voidptr) bool { return false }
-pub fn ime_set_overlay_bounds(x f32, y f32, width f32, height f32) {}
-pub fn ime_activate() {}
-pub fn ime_deactivate() {}
-pub fn ime_is_active() bool { return false }
+struct PendingUpload {
+    page_idx int
+    staging_buffer []u8  // Copy of atlas data to upload
+    ready bool           // Has rasterization completed?
+}
+
+struct Renderer {
+mut:
+    pending_uploads []PendingUpload
+    staging_buffers [][]u8  // Pre-allocated buffers
+}
 ```
 
-### Component 3: Extended ime_bridge_macos.h
+### Integration Points
 
-**Purpose:** Add C declarations for overlay management
-**Location:** Update existing `ime_bridge_macos.h`
+**Upload path:** `commit()` → queue PendingUpload → sokol async upload
 
-**Additions:**
-```c
-// Overlay lifecycle
-bool vglyph_ime_init_overlay(void* window);  // NSWindow*
-void vglyph_ime_set_overlay_bounds(float x, float y, float width, float height);
-void vglyph_ime_activate(void);
-void vglyph_ime_deactivate(void);
-bool vglyph_ime_is_active(void);
+**Sokol limitation:** sokol_gfx.h doesn't expose PBO or async upload directly
 
-// Query callbacks for NSTextInputClient (called by overlay)
-bool vglyph_ime_has_marked_text(void);
-int vglyph_ime_marked_start(void);
-int vglyph_ime_marked_length(void);
-int vglyph_ime_selection_start(void);
-int vglyph_ime_selection_length(void);
-```
+**Workaround options:**
+1. Use sokol's update mechanism (still blocking)
+2. Drop to raw OpenGL PBOs (breaks abstraction)
+3. Double-buffer staging: rasterize to staging while GPU uploads previous
 
-## Integration Points
+**Recommended:** Double-buffered staging (stays within sokol)
 
-### With composition.v (Existing)
+**Algorithm:**
+- Rasterize glyphs to staging buffer A while GPU uploads buffer B
+- Swap buffers when upload completes (fence or frame boundary)
+- No actual async upload, but overlaps CPU/GPU work
 
-No changes needed. IME overlay calls existing callbacks:
-- `ime_marked_text` -> `CompositionState.set_marked_text()`
-- `ime_insert_text` -> `CompositionState.commit()` + text insertion
-- `ime_unmark_text` -> `CompositionState.cancel()`
-- `ime_bounds` -> `CompositionState.get_composition_bounds()`
+**Confidence:** MEDIUM (sokol abstraction limits true async)
 
-The overlay simply provides the native bridge that was missing.
+### Sokol Context
 
-### With editor_demo.v (Existing)
+Sokol uses `sg.ImageDesc{usage: .dynamic}` for atlas textures:
+- Dynamic images allow updates via `sg.update_image()`
+- Update is synchronous within sokol abstraction
+- Backend may use PBOs (OpenGL) or staging buffers (Metal/Vulkan) internally
 
-Minor additions for overlay lifecycle:
+**PBOs in OpenGL:**
+- Use `glMapBuffer()` to get CPU-writable pointer
+- Unmap triggers async DMA transfer to GPU
+- Requires raw OpenGL calls (bypasses sokol)
+
+**Staging strategy:**
+- Pre-allocate staging buffers (page_width * page_height * 4)
+- Rasterize to staging instead of atlas.image.data
+- Swap staging buffers per frame
+- Call `update_pixel_data()` from staging buffer
+
+**Benefits:** CPU rasterization doesn't block on GPU upload completion
+
+### Build Order
+
+1. Add staging buffers to Renderer struct
+2. Modify `insert_bitmap()` → rasterize to staging buffer
+3. Modify `commit()` → swap staging buffers before upload
+4. Benchmark: measure frame time reduction (expect 5-10% on glyph-heavy frames)
+
+## Shape Plan Caching Integration
+
+### Modified Components
+
+**Context (context.v):**
+- Add ShapePlanCache parallel to MetricsCache
+- Cache plans per (font face, language, features) tuple
+
+**Layout (layout.v):**
+- Extract shape plan key before `layout_text()`
+- Check cache, reuse plan if present
+- Call `hb_shape_plan_create_cached()` instead of direct shaping
+
+### New Data Structures
+
 ```v
-fn init(state_ptr voidptr) {
-    // ... existing init ...
-
-    // Initialize IME overlay
-    window := sapp_macos_get_window()  // sokol API
-    vglyph.ime_init_overlay(window)
+struct ShapePlanKey {
+    face voidptr       // FT_FaceRec pointer
+    language string    // e.g., "en", "ja", "zh"
+    features string    // Serialized OpenType features
 }
 
-fn event(e &gg.Event, state_ptr voidptr) {
-    match e.typ {
-        .focus_in {
-            // Activate IME when text field gains focus
-            if state.text_focused {
-                vglyph.ime_activate()
-            }
-        }
-        .focus_out {
-            // Deactivate IME, auto-commit if composing
-            if state.composition.is_composing() {
-                commit_text := state.composition.commit()
-                apply_insert(mut state, commit_text)
-            }
-            vglyph.ime_deactivate()
-        }
-        // ... existing event handling ...
-    }
-}
-
-fn frame(state_ptr voidptr) {
-    // Update overlay bounds to match text area position
-    vglyph.ime_set_overlay_bounds(50, 50, 600, 500)  // Match text area
-    // ... existing rendering ...
+struct ShapePlanCache {
+mut:
+    plans map[u64]voidptr  // ShapePlanKey hash → hb_shape_plan_t*
+    access_order []u64     // LRU tracking
+    capacity int = 128     // Max cached plans
 }
 ```
 
-### With existing Objective-C FFI
+### Integration Points
 
-Uses same patterns as accessibility/objc_helpers.h:
-- ARC-compatible void* bridging
-- Static inline wrapper functions
-- V fn C declarations map to inline C functions
+**Cache key:** hash of (face pointer, language string, features string)
 
-### With sokol (Workaround Architecture)
+**HarfBuzz integration:**
+- Pango uses HarfBuzz internally (pango_layout_new → hb_shape)
+- No direct HarfBuzz API in current VGlyph code
+- Need to extract PangoFont → FT_Face → hb_face_t → hb_shape_plan
 
-**Problem:** sokol's MTKView owns Metal rendering, doesn't implement NSTextInputClient.
-NSView categories don't apply to MTKView subclasses.
+**Pango shaping path:**
+1. `pango_layout_new()` creates layout
+2. `pango_layout_get_iter()` → `pango_layout_iter_get_run_readonly()`
+3. PangoLayoutRun contains `item.analysis.font` (PangoFont)
+4. `pango_ft2_font_get_face()` → FT_FaceRec (already used)
 
-**Solution:** Position transparent NSView overlay above MTKView:
-```
-┌────────────────────────────────────────────┐
-│ NSWindow                                    │
-│ ┌────────────────────────────────────────┐ │
-│ │ VGlyphIMEOverlayView (transparent)     │ │ <- Receives IME events
-│ │ ┌────────────────────────────────────┐ │ │
-│ │ │ sokol MTKView (Metal rendering)    │ │ │ <- Renders graphics
-│ │ │                                    │ │ │
-│ │ │  [text area with cursor]           │ │ │
-│ │ │                                    │ │ │
-│ │ └────────────────────────────────────┘ │ │
-│ └────────────────────────────────────────┘ │
-└────────────────────────────────────────────┘
-```
+**HarfBuzz caching:** `hb_shape_plan_create_cached()` maintains internal cache
 
-**Key insight:** Overlay view doesn't need to cover entire window. It only needs to cover the text
-editing area. When user clicks text area, overlay becomes first responder for key events. When user
-clicks outside, focus returns to MTKView.
+**Problem:** Pango abstracts HarfBuzz, no direct access to shape plans
 
-**First responder management:**
-- When text field gains focus: `[overlayView.window makeFirstResponder:overlayView]`
-- When text field loses focus: `[overlayView.window makeFirstResponder:mtkView]`
-- Overlay passes mouse events through (hitTest returns nil for mouse events)
+**Alternative:** Cache PangoLayout objects instead
 
-## State Management
+### Pango Layout Caching Strategy
 
-### Existing State (No Changes)
+VGlyph already has LayoutCache (layout_query.v) with TTL-based eviction.
 
-**CompositionState** (composition.v) already handles:
-- `phase: CompositionPhase` - none/composing
-- `preedit_text: string` - current composition
-- `preedit_start: int` - byte offset in document
-- `cursor_offset: int` - cursor within preedit
-- `clauses: []Clause` - segment info
-- `selected_clause: int` - current clause index
+**Current LayoutCache:**
+- Caches full Layout result (after shaping complete)
+- Key: (text, style, block config)
+- TTL: 5 second expiration
 
-**DeadKeyState** (composition.v) already handles:
-- `pending: ?rune` - dead key waiting
-- `pending_pos: int` - position where typed
+**Enhancement:** This already caches shaped results, so HarfBuzz shaping is avoided
 
-### New State
+**Shape plan caching benefit:** Minimal if LayoutCache hit rate is high
 
-**IME Overlay State** (in Objective-C static vars):
-```objc
-static VGlyphIMEOverlayView* g_overlay_view = nil;
-static bool g_overlay_active = false;
-```
+**Recommendation:** Monitor LayoutCache hit rate before adding HarfBuzz-level cache
 
-**No new V state needed.** The overlay queries existing CompositionState via callbacks.
+### Build Order
 
-### State Synchronization
+1. Instrument LayoutCache hit/miss counters (profile builds)
+2. Benchmark common use cases (text editor, UI labels)
+3. If miss rate > 20%, consider direct HarfBuzz integration
+4. Otherwise, existing LayoutCache sufficient
 
-```
-User types key
-    │
-    ├── Overlay active? ──No──> Normal key event to sokol
-    │         │
-    │        Yes
-    │         │
-    │         v
-    │  [inputContext handleEvent:]
-    │         │
-    │    IME processes
-    │         │
-    │  ┌──────┴──────┐
-    │  │             │
-setMarkedText    insertText
-    │             │
-    v             v
-CompositionState  CompositionState.commit()
-.set_marked_text()     + insert_text()
-    │             │
-    v             v
-Layout rebuilt    Layout rebuilt
-(preedit shown)   (final text)
-```
+**Confidence:** LOW (Pango abstraction makes direct HB cache complex)
 
-## Data Flow
+### HarfBuzz Recent Improvements
 
-### Keystroke -> IME -> Composition -> Commit -> VGlyph
+HarfBuzz 12.3 (2025):
+- AAT shaping: 12% faster (LucidaGrande benchmark)
+- OpenType shaping: 20% faster (NotoNastaliqUrdu) via Coverage caching
+
+**Takeaway:** Upgrading HarfBuzz may provide gains without code changes
+
+## Suggested Build Order
+
+**Phase 1: Shelf Packing (HIGH confidence, immediate wins)**
+1. Extract shelf allocator to `shelf_packer.v`
+2. Add Shelf struct and allocator logic
+3. Integrate into `insert_bitmap()`
+4. Test with atlas_debug example
+5. Measure atlas utilization improvement (expect 10-15% better)
+
+**Phase 2: Async Texture Updates (MEDIUM confidence, measurable but limited)**
+1. Add staging buffers to Renderer
+2. Modify `insert_bitmap()` to rasterize to staging
+3. Implement double-buffering in `commit()`
+4. Benchmark frame time (expect 5-10% on heavy frames)
+5. Consider if gains justify complexity (may defer)
+
+**Phase 3: Shape Plan Caching (LOW confidence, validate first)**
+1. Add LayoutCache hit/miss instrumentation
+2. Run benchmarks (editor demo, stress demo)
+3. If miss rate < 20%, skip this optimization
+4. If miss rate high, explore direct HarfBuzz caching (complex)
+
+**Rationale:** Shelf packing is low-risk, high-reward. Async uploads have sokol limits. Shape
+caching may be redundant with existing LayoutCache.
+
+## Data Flow Changes
+
+### Current Flow
 
 ```
-1. User presses key (e.g., 'n' for Japanese input)
-   │
-   ├── VGlyphIMEOverlayView is first responder
-   │
-   └── keyDown: calls [[self inputContext] handleEvent:event]
-
-2. NSTextInputContext forwards to active IME
-   │
-   ├── Japanese IME: 'n' → 'n' (preedit hiragana)
-   │
-   └── IME calls setMarkedText:selectedRange:replacementRange:
-
-3. setMarkedText forwards to V callbacks
-   │
-   ├── g_marked_callback("n", cursor_pos, g_user_data)
-   │
-   └── V code: composition.set_marked_text("n", cursor_pos)
-
-4. User continues typing 'i' → IME: 'ni' → 'に' (hiragana)
-   │
-   └── More setMarkedText calls, updating preedit
-
-5. User presses Space to convert → '日' (kanji candidate)
-   │
-   ├── setMarkedText with clause info (selected clause marked)
-   │
-   └── V: composition.set_clauses([Clause{...}], selected: 0)
-
-6. User confirms with Return
-   │
-   ├── IME calls insertText:"日"
-   │
-   └── g_insert_callback("日", g_user_data)
-
-7. V code commits and inserts
-   │
-   ├── text := composition.commit()  // Returns "日", resets state
-   │
-   ├── mutation := insert_text(document, cursor, text)
-   │
-   └── layout := ts.layout_text(mutation.new_text, cfg)
-
-8. Frame renders final text
+draw_layout() → get_or_load_glyph() → load_glyph() → ft_bitmap_to_bitmap()
+    → insert_bitmap() [row-based] → copy_bitmap_to_page() → page.dirty = true
+    → commit() [synchronous upload] → update_pixel_data()
 ```
 
-### Candidate Window Positioning
+### With Shelf Packing
 
 ```
-IME needs position for candidate window
-    │
-    v
-firstRectForCharacterRange:actualRange: called
-    │
-    v
-g_bounds_callback(user_data, &x, &y, &w, &h)
-    │
-    v
-V: composition.get_composition_bounds(layout)
-    │
-    ├── Returns layout-relative rect
-    │
-    └── (or cursor rect if no preedit yet)
-    │
-    v
-Objective-C converts to screen coordinates:
-    │
-    ├── Add text area offset (where layout rendered in view)
-    │
-    ├── convertRect:toView:nil (view -> window)
-    │
-    └── convertRectToScreen: (window -> screen)
-    │
-    v
-IME positions candidate window below/beside rect
+insert_bitmap() → ShelfAllocator.allocate() [best-height-fit]
+    → find_or_create_shelf() → pack into shelf → copy_bitmap_to_page()
 ```
 
-### Focus Management
+**Change:** Allocation logic only, rest of pipeline unchanged
+
+### With Async Uploads
 
 ```
-Mouse click on text area
-    │
-    v
-Hit test: overlay covers text area?
-    │
-    ├──Yes──> [overlayView mouseDown:]
-    │             │
-    │             └── ime_activate()
-    │                    │
-    │                    └── [window makeFirstResponder:overlayView]
-    │
-    └──No──> sokol MTKView handles mouse
-
-Mouse click outside text area
-    │
-    v
-Hit test: outside overlay bounds
-    │
-    └── sokol MTKView handles mouse
-           │
-           └── ime_deactivate() (if was composing, auto-commit)
-                   │
-                   └── [window makeFirstResponder:mtkView]
+insert_bitmap() → copy_bitmap_to_staging_buffer() → page.dirty = true
+commit() → swap_staging_buffers() → update_pixel_data(staging_buffer)
+    [CPU rasterizes to buffer A while GPU uploads buffer B]
 ```
 
-## Build Order
+**Change:** Rasterization target and upload source, GPU call unchanged
 
-### Phase 1: Overlay Infrastructure (Foundation)
-**What:** Create VGlyphIMEOverlayView, basic NSTextInputClient skeleton
-**Why first:** Must have native bridge before IME events can flow
-**Files:**
-- `ime_overlay_macos.m` (new)
-- `ime_bridge_macos.h` (extend)
-- `ime_manager_darwin.v` (new)
-- `ime_manager_stub.v` (new)
+### With Shape Plan Caching
 
-**Verification:** Overlay appears, can become first responder
+```
+layout_text() → compute_cache_key() → check ShapePlanCache
+    → if hit: reuse hb_shape_plan_t
+    → if miss: hb_shape_plan_create_cached() → insert into cache
+    → pango_layout_new() [may internally use cached plan]
+```
 
-### Phase 2: Event Forwarding (Connection)
-**What:** Wire overlay to existing callbacks, verify events reach V
-**Why second:** Bridge is useless without event flow
-**Files:**
-- `ime_overlay_macos.m` (implement NSTextInputClient methods)
+**Change:** Pre-shaping cache lookup, Pango call may benefit from HarfBuzz cache
 
-**Verification:** Japanese IME shows candidate window, setMarkedText reaches V
+**Note:** Pango abstraction means indirect benefit only
 
-### Phase 3: Coordinate Conversion (Positioning)
-**What:** Implement firstRectForCharacterRange with correct transforms
-**Why third:** Candidate window must appear in correct position
-**Files:**
-- `ime_overlay_macos.m` (firstRectForCharacterRange)
+## Integration Risks
 
-**Verification:** Candidate window appears near cursor, not at corner
+**Shelf Packing:**
+- Risk: Glyph placement order changes, may expose cache invalidation bugs
+- Mitigation: Existing multi-page reset logic handles this
+- Risk: Edge case where glyph fits in page but no shelf has space
+- Mitigation: Create new shelf or fallback to page grow
 
-### Phase 4: Focus Management (Polish)
-**What:** Handle activate/deactivate, click outside, focus loss
-**Why fourth:** Must handle all edge cases for production use
-**Files:**
-- `ime_overlay_macos.m` (hit testing, responder chain)
-- `editor_demo.v` (focus event handling)
+**Async Uploads:**
+- Risk: Sokol doesn't expose true async, may add complexity without benefit
+- Mitigation: Profile before full implementation, consider deferring
+- Risk: Staging buffer overhead (double memory for atlas)
+- Mitigation: VGlyph atlas max is 4×4096×4096×4 = 256MB, staging adds 256MB
 
-**Verification:** Focus changes work correctly, auto-commit on focus loss
+**Shape Plan Caching:**
+- Risk: Pango abstraction prevents direct HarfBuzz cache control
+- Mitigation: Use existing LayoutCache instead, instrument hit rate
+- Risk: HarfBuzz internal cache may already optimize this
+- Mitigation: Benchmark before implementing
 
-### Phase 5: CJK Testing (Validation)
-**What:** Test with Japanese, Chinese, Korean IMEs
-**Why last:** Need all pieces working before comprehensive testing
-**Testing:**
-- Japanese: Hiragana -> Kanji with clause selection
-- Chinese Pinyin: Tone selection, character selection
-- Korean: Hangul jamo composition
+## Performance Expectations
 
-**Verification:** All three CJK input methods work correctly
+**Shelf Packing:**
+- Atlas utilization: 60-70% → 80-85% (WebRender data)
+- Allows more glyphs per page, fewer page resets
+- No runtime cost increase (still O(n) shelf scan)
 
-## Alternative Approaches Considered
+**Async Uploads:**
+- Frame time: 5-10% reduction on glyph-heavy frames
+- Benefit depends on rasterize/upload ratio
+- Limited by sokol's synchronous API
 
-### Alternative 1: Swizzle MTKView
-**Approach:** Use Objective-C runtime to add NSTextInputClient methods to MTKView at runtime
-**Pros:** No new views, potentially simpler
-**Cons:** Fragile (sokol may change), runtime manipulation risky
-**Decision:** Rejected - too fragile, overlay is safer
-
-### Alternative 2: Fork/Modify Sokol
-**Approach:** Add NSTextInputClient conformance directly to sokol's MTKView subclass
-**Pros:** Clean solution, proper integration
-**Cons:** Maintenance burden, diverges from upstream sokol
-**Decision:** Rejected per project requirements (no sokol modifications)
-
-### Alternative 3: NSTextInputContext Remote Client
-**Approach:** Create NSTextInputContext with remote client, not tied to view hierarchy
-**Pros:** No overlay view needed
-**Cons:** Still needs a NSView for inputContext, complex activation handling
-**Decision:** Partially used - overlay uses this pattern internally
-
-### Alternative 4: Replace Sokol Rendering
-**Approach:** Use CAMetalLayer directly instead of MTKView
-**Pros:** More control, sokol issue #727 suggests this
-**Cons:** Requires significant rendering architecture changes
-**Decision:** Rejected - too invasive for IME-only goal
-
-## Risks and Mitigations
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| Overlay doesn't receive events | Medium | High | Verify responder chain, test hit testing |
-| Coordinate transform incorrect | Medium | Medium | Test on multiple screen configurations |
-| Focus management race conditions | Low | Medium | Serialize focus changes, debounce |
-| Performance overhead from overlay | Low | Low | Overlay is transparent, minimal overhead |
-| Breaks existing dead key handling | Low | High | Test dead keys with each phase |
+**Shape Plan Caching:**
+- Benefit unclear (LayoutCache may already cover this)
+- HarfBuzz 12.3 improvements (20% faster OpenType) available via library upgrade
+- Recommend: upgrade HarfBuzz first, then re-evaluate
 
 ## Dependencies
 
-**External (no changes needed):**
-- sokol: Uses sapp_macos_get_window() to get NSWindow
-- gg: Unchanged, continues using sokol backend
-- Pango/FreeType: Unchanged
+**Shelf Packing:**
+- No external dependencies
+- Pure algorithmic change
+- Compatible with existing sokol/gg backend
 
-**Internal (leveraged):**
-- composition.v: CompositionState, ClauseStyle, get_composition_bounds
-- ime_bridge_macos.h: Callback type definitions
-- c_bindings.v: ime_register_callbacks wrapper
+**Async Uploads:**
+- Sokol version: check if newer versions expose async upload
+- OpenGL PBOs: requires raw GL calls (breaks abstraction)
+- Metal staging: sokol may handle internally
 
-## Testing Strategy
-
-### Unit Tests
-- CompositionState transitions (none -> composing -> none)
-- Clause rect calculation
-- Coordinate conversion math
-
-### Integration Tests
-- Overlay creation and positioning
-- Event forwarding to callbacks
-- Focus management
-
-### Manual Tests
-- Japanese IME: Type "nihongo" -> convert to "日本語"
-- Chinese Pinyin: Type "zhongwen" -> select "中文"
-- Korean Hangul: Type "hangul" -> compose to "한글"
-- Mixed: Start Japanese, switch to English, back to Japanese
-
-### Regression Tests
-- Dead key composition still works
-- Normal character input unaffected
-- Accessibility announcements still work
+**Shape Plan Caching:**
+- HarfBuzz version: 4.4.0+ has improved caching (2023)
+- Pango version: ensure HarfBuzz integration enabled
+- FreeType: no changes needed
 
 ## Sources
 
-**HIGH confidence (official documentation):**
-- [NSTextInputClient Protocol](https://developer.apple.com/documentation/appkit/nstextinputclient)
-- [NSTextInputContext](https://developer.apple.com/documentation/appkit/nstextinputcontext)
-- [MTKView](https://developer.apple.com/documentation/metalkit/mtkview)
-
-**MEDIUM confidence (implementation references):**
-- [GLFW NSTextInputClient Implementation](https://fsunuc.physics.fsu.edu/git/gwm17/glfw/commit/3107c9548d7911d9424ab589fd2ab8ca8043a84a)
-- [Sokol IME Issue #595](https://github.com/floooh/sokol/issues/595)
-- [Sokol MTKView Issue #727](https://github.com/floooh/sokol/issues/727)
-- [jessegrosjean NSTextInputClient Reference](https://github.com/jessegrosjean/NSTextInputClient)
-- [CEF IME for Off-Screen Rendering](https://www.magpcss.org/ceforum/viewtopic.php?f=8&t=10470)
-
-**LOW confidence (patterns only, not verified):**
-- [Mozilla Bug 875674](https://bugzilla.mozilla.org/show_bug.cgi?id=875674)
-- [winit NSTextInputClient Issues](https://github.com/rust-windowing/winit/issues/3617)
+- [Étagère: WebRender texture atlas allocation](https://nical.github.io/posts/etagere.html)
+- [Skyline algorithm for 2D rectangle packing](https://jvernay.fr/en/blog/skyline-2d-packer/implementation/)
+- [HarfBuzz shape plan caching](https://harfbuzz.github.io/shaping-plans-and-caching.html)
+- [HarfBuzz 12.3 performance improvements](https://www.phoronix.com/news/HarfBuzz-12.3-Released)
+- [OpenGL PBO async texture upload](https://www.songho.ca/opengl/gl_pbo.html)
+- [Pango HarfBuzz integration](https://harfbuzz.github.io/integration.html)
+- [Texture packing for fonts](https://straypixels.net/texture-packing-for-fonts/)
