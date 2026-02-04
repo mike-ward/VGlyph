@@ -235,9 +235,8 @@ fn (mut ann AccessibilityAnnouncer) should_announce() bool {
 	return true
 }
 
-// log_announcement outputs to stderr and posts to VoiceOver
+// log_announcement posts to VoiceOver
 fn (ann AccessibilityAnnouncer) log_announcement(message string) {
-	eprintln('[VoiceOver] ${message}')
-	// Post to VoiceOver via NSAccessibility
+	// eprintln('[VoiceOver] ${message}')  // debug
 	announce_to_voiceover(message)
 }
