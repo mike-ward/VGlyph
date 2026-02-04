@@ -134,6 +134,32 @@ static void vglyph_insertText(id self, SEL _cmd, id string) {
     }
 }
 
+// Flag to track if swizzling has been done
+static BOOL g_swizzling_done = NO;
+
+// Perform swizzling of sokol's view class (called lazily on first IME use)
+static void ensureSwizzling(void) {
+    if (g_swizzling_done) return;
+    g_swizzling_done = YES;
+
+    Class sappViewClass = NSClassFromString(@"_sapp_macos_view");
+    if (sappViewClass) {
+        // Swizzle keyDown to forward to IME
+        Method keyDownMethod = class_getInstanceMethod(sappViewClass, @selector(keyDown:));
+        if (keyDownMethod) {
+            g_original_keyDown = method_getImplementation(keyDownMethod);
+            method_setImplementation(keyDownMethod, (IMP)vglyph_keyDown);
+        }
+
+        // Swizzle insertText: to suppress during IME composition
+        Method insertTextMethod = class_getInstanceMethod(sappViewClass, @selector(insertText:));
+        if (insertTextMethod) {
+            g_original_insertText = method_getImplementation(insertTextMethod);
+            method_setImplementation(insertTextMethod, (IMP)vglyph_insertText);
+        }
+    }
+}
+
 + (void)load {
     // Add NSTextInputClient protocol conformance to NSView at runtime.
     // This is required because macOS IME checks conformsToProtocol:, not just respondsToSelector:.
@@ -153,27 +179,8 @@ static void vglyph_insertText(id self, SEL _cmd, id string) {
             class_addProtocol(mtkViewClass, protocol);
         }
 
-        // Swizzle keyDown and insertText on sokol's view class
-        // We do this after a delay to ensure sokol's class is registered
-        dispatch_async(dispatch_get_main_queue(), ^{
-            Class sappViewClass = NSClassFromString(@"_sapp_macos_view");
-            if (sappViewClass) {
-                // Swizzle keyDown to forward to IME
-                Method keyDownMethod = class_getInstanceMethod(sappViewClass, @selector(keyDown:));
-                if (keyDownMethod) {
-                    g_original_keyDown = method_getImplementation(keyDownMethod);
-                    method_setImplementation(keyDownMethod, (IMP)vglyph_keyDown);
-                }
-
-                // Swizzle insertText: to suppress during IME composition
-                // sokol uses this for character input
-                Method insertTextMethod = class_getInstanceMethod(sappViewClass, @selector(insertText:));
-                if (insertTextMethod) {
-                    g_original_insertText = method_getImplementation(insertTextMethod);
-                    method_setImplementation(insertTextMethod, (IMP)vglyph_insertText);
-                }
-            }
-        });
+        // Note: Swizzling is done lazily in ensureSwizzling() when inputContext is first accessed.
+        // This ensures sokol's view class exists before we try to swizzle it.
     });
 }
 
@@ -185,6 +192,9 @@ static void vglyph_insertText(id self, SEL _cmd, id string) {
     if (!g_marked_callback) {
         return nil;
     }
+
+    // Ensure swizzling is done before first IME use
+    ensureSwizzling();
 
     if (!g_input_context) {
         g_input_context = [[NSTextInputContext alloc] initWithClient:(id<NSTextInputClient>)self];
