@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-03)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** v1.4 CJK IME — Phase 19 NSTextInputClient Protocol COMPLETE
+**Current focus:** v1.4 CJK IME — Phase 20 Korean + Keyboard Integration
 
 ## Current Position
 
-Phase: 19 of 21 (NSTextInputClient Protocol)
-Plan: 3 of 3 complete
-Status: Phase verified and complete
-Last activity: 2026-02-04 — Phase 19 verified, CJK IME working
+Phase: 20 of 21 (Korean + Keyboard Integration)
+Plan: 2 of 2 complete
+Status: Phase in progress
+Last activity: 2026-02-04 — Completed 20-02-PLAN.md (keyboard integration)
 
-Progress: ██████████████████████████████ 32/32+ plans
+Progress: ██████████████████████████████ 34/34+ plans
 
 ## Performance Metrics
 
@@ -54,16 +54,16 @@ v1.4 Phase 19 decisions:
 - Handler methods on CompositionState to encapsulate callback processing
 - TextSystem.draw_composition wraps Renderer (private) for public API
 
+v1.4 Phase 20 decisions:
+- Block undo/redo entirely during composition (prevents state corruption)
+- Option+Backspace cancels composition (discards preedit, not commit)
+- Cmd+A commits then selects (less surprising than blocking)
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
-
-**CJK IME approach** (documented 2026-02-03):
-- Overlay approach has CEF precedent but not tested with sokol specifically
-- Korean jamo backspace behavior less documented than Japanese/Chinese
-- Research confidence: MEDIUM-HIGH overall
 
 **Overlay API limitation** (documented 2026-02-04):
 - editor_demo uses global callback API because gg doesn't expose MTKView handle
@@ -77,6 +77,6 @@ None active.
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: Phase 19 verified complete
+Stopped at: Completed 20-02-PLAN.md
 Resume file: None
-Next: Phase 20 (Korean + Keyboard Integration)
+Next: Phase 21 (Verification)
