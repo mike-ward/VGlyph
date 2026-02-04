@@ -384,6 +384,31 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			if cmd_held {
 				match e.key_code {
 					.a {
+						// Per RESEARCH.md: Cmd+A during composition commits first, then selects
+						if state.composition.is_composing() {
+							committed := state.composition.commit()
+							if committed.len > 0 {
+								cursor_before := state.cursor_idx
+								anchor_before := state.anchor_idx
+								result := vglyph.insert_text(state.text, state.cursor_idx, committed)
+								new_layout := state.ts.layout_text(result.new_text, state.cfg) or {
+									state.skip_char_event = true
+									return
+								}
+								mut new_cursor := result.cursor_pos
+								if new_cursor < 0 {
+									new_cursor = 0
+								}
+								if new_cursor > result.new_text.len {
+									new_cursor = result.new_text.len
+								}
+								state.text = result.new_text
+								state.layout = new_layout
+								state.cursor_idx = new_cursor
+								state.undo_mgr.record_mutation(result, committed, cursor_before,
+									anchor_before)
+							}
+						}
 						// Cmd+A: select all
 						state.anchor_idx = 0
 						positions := state.layout.get_valid_cursor_positions()
