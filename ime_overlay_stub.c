@@ -21,4 +21,11 @@ void vglyph_overlay_free(void* handle) {
     // No-op
 }
 
+// Register callbacks (no-op on non-Darwin)
+void vglyph_overlay_register_callbacks(void* handle, VGlyphIMECallbacks callbacks) {
+    (void)handle;
+    (void)callbacks;
+    // No-op
+}
+
 #endif // !__APPLE__

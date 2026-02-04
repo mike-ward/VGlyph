@@ -6,12 +6,26 @@
 #import "ime_overlay_darwin.h"
 
 // VGlyphIMEOverlayView - Transparent overlay implementing NSTextInputClient
-@interface VGlyphIMEOverlayView : NSView <NSTextInputClient>
+@interface VGlyphIMEOverlayView : NSView <NSTextInputClient> {
+    NSRange _markedRange;
+    NSRange _selectedRange;
+}
 @property (weak, nonatomic) NSView* mtkView; // Weak reference to underlying MTKView
 @property (strong, nonatomic) NSString* fieldId; // Current focused field identifier
+@property (nonatomic) VGlyphIMECallbacks callbacks; // IME event callbacks
 @end
 
 @implementation VGlyphIMEOverlayView
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _markedRange = NSMakeRange(NSNotFound, 0);
+        _selectedRange = NSMakeRange(0, 0);
+        memset(&_callbacks, 0, sizeof(VGlyphIMECallbacks));
+    }
+    return self;
+}
 
 #pragma mark - NSView Overrides
 
@@ -154,4 +168,13 @@ void vglyph_overlay_free(VGlyphOverlayHandle handle) {
     VGlyphIMEOverlayView* overlay = (__bridge_transfer VGlyphIMEOverlayView*)handle;
     [overlay removeFromSuperview];
     // ARC will deallocate overlay after this scope
+}
+
+void vglyph_overlay_register_callbacks(VGlyphOverlayHandle handle, VGlyphIMECallbacks callbacks) {
+    if (!handle) {
+        return;
+    }
+
+    VGlyphIMEOverlayView* overlay = (__bridge VGlyphIMEOverlayView*)handle;
+    overlay.callbacks = callbacks;
 }

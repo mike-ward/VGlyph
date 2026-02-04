@@ -9,6 +9,14 @@
 // Opaque handle to overlay view
 typedef void* VGlyphOverlayHandle;
 
+// Callback structure for IME events
+typedef struct {
+    void (*on_marked_text)(const char* text, int cursor_pos, void* user_data);
+    void (*on_insert_text)(const char* text, void* user_data);
+    void (*on_unmark_text)(void* user_data);
+    void* user_data;
+} VGlyphIMECallbacks;
+
 // Create overlay as sibling above MTKView
 // mtk_view: Pointer to sokol's MTKView (casted from sapp_macos_get_window())
 // Returns: Handle to overlay, or NULL on failure
@@ -22,5 +30,10 @@ void vglyph_set_focused_field(VGlyphOverlayHandle handle, const char* field_id);
 // Free overlay and remove from view hierarchy
 // handle: Overlay handle from vglyph_create_ime_overlay
 void vglyph_overlay_free(VGlyphOverlayHandle handle);
+
+// Register callbacks for IME events
+// handle: Overlay handle from vglyph_create_ime_overlay
+// callbacks: Structure containing callback function pointers
+void vglyph_overlay_register_callbacks(VGlyphOverlayHandle handle, VGlyphIMECallbacks callbacks);
 
 #endif // VGLYPH_IME_OVERLAY_DARWIN_H
