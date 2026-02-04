@@ -82,6 +82,14 @@ See: .planning/milestones/v1.4-ROADMAP.md for full details.
 **Requirements:** SEC-01, SEC-02, SEC-03, SEC-04, SEC-05, SEC-06, SEC-07, SEC-08, SEC-09, SEC-10,
 SEC-11
 
+**Plans:** 4 plans
+
+Plans:
+- [ ] 22-01-PLAN.md — Input validation (UTF-8, paths, numeric bounds)
+- [ ] 22-02-PLAN.md — Null handling and allocation safety
+- [ ] 22-03-PLAN.md — Error handling audit (no silent failures)
+- [ ] 22-04-PLAN.md — Resource cleanup verification and SECURITY.md
+
 **Success Criteria:**
 1. User can pass malformed UTF-8 text without crash or memory corruption
 2. User can pass invalid font paths without crash or file system access outside allowed paths
@@ -166,10 +174,10 @@ SEC-11
 | 19. NSTextInputClient + JP/CH | v1.4 | 3/3 | Complete | 2026-02-04 |
 | 20. Korean + Keyboard | v1.4 | 2/2 | Partial* | 2026-02-04 |
 | 21. Multi-Display & Polish | v1.4 | 3/3 | Complete | 2026-02-04 |
-| 22. Security Audit | v1.5 | 0/? | Pending | — |
+| 22. Security Audit | v1.5 | 0/4 | Planned | — |
 | 23. Code Consistency | v1.5 | 0/? | Pending | — |
 | 24. Documentation | v1.5 | 0/? | Pending | — |
 | 25. Verification | v1.5 | 0/? | Pending | — |
 
 ---
-*Last updated: 2026-02-04 after v1.5 roadmap creation*
+*Last updated: 2026-02-04 after Phase 22 planning*
