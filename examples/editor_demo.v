@@ -344,7 +344,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			if cmd_held && e.key_code == .z && !shift_held {
 				// Block undo during IME composition (RESEARCH.md Pitfall #3)
 				if state.composition.is_composing() {
-					return // Silently ignore - don't undo during composition
+					return
 				}
 				// Cmd+Z: undo
 				if new_text, new_cursor, new_anchor := state.undo_mgr.undo(state.text,
@@ -363,7 +363,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			if cmd_held && e.key_code == .z && shift_held {
 				// Block redo during IME composition (RESEARCH.md Pitfall #3)
 				if state.composition.is_composing() {
-					return // Silently ignore - don't redo during composition
+					return
 				}
 				// Cmd+Shift+Z: redo
 				if new_text, new_cursor, new_anchor := state.undo_mgr.redo(state.text,
@@ -390,7 +390,8 @@ fn event(e &gg.Event, state_ptr voidptr) {
 							if committed.len > 0 {
 								cursor_before := state.cursor_idx
 								anchor_before := state.anchor_idx
-								result := vglyph.insert_text(state.text, state.cursor_idx, committed)
+								result := vglyph.insert_text(state.text, state.cursor_idx,
+									committed)
 								new_layout := state.ts.layout_text(result.new_text, state.cfg) or {
 									state.skip_char_event = true
 									return
@@ -676,7 +677,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 						state.composition.cancel()
 						// Rebuild layout without preedit
 						state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
-						return // Don't proceed to word deletion this keypress
+						return
 					}
 
 					// Regular backspace during composition is handled by IME (line 310-317)
