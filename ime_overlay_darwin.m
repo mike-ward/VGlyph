@@ -184,6 +184,31 @@
     return NSNotFound;
 }
 
+#pragma mark - Key Forwarding (Phase 20: Korean IME support)
+
+- (void)keyDown:(NSEvent*)event {
+    // When composing, forward ALL keys to IME for proper handling
+    // This enables Korean jamo decomposition on backspace
+    if ([self hasMarkedText]) {
+        [self interpretKeyEvents:@[event]];
+        return;
+    }
+
+    // Not composing: pass to next responder (MTKView/sokol)
+    [self.nextResponder keyDown:event];
+}
+
+- (void)doCommandBySelector:(SEL)selector {
+    // Called by IME for non-character commands (arrows during composition, etc)
+    // Forward to next responder for application handling
+    if ([self.nextResponder respondsToSelector:selector]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        [self.nextResponder performSelector:selector withObject:nil];
+#pragma clang diagnostic pop
+    }
+}
+
 @end
 
 #pragma mark - C API Implementation
