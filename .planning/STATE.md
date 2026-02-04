@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-03)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** v1.4 CJK IME — Phase 19 NSTextInputClient Protocol
+**Current focus:** v1.4 CJK IME — Phase 19 NSTextInputClient Protocol COMPLETE
 
 ## Current Position
 
 Phase: 19 of 21 (NSTextInputClient Protocol)
-Plan: 2 of 3 complete
-Status: In progress
-Last activity: 2026-02-03 — Completed 19-02-PLAN.md
+Plan: 3 of 3 complete
+Status: Phase complete
+Last activity: 2026-02-04 — Completed 19-03-PLAN.md
 
-Progress: █████████████████████████████░ 31/32+ plans
+Progress: ██████████████████████████████ 32/32+ plans
 
 ## Performance Metrics
 
@@ -43,7 +43,7 @@ v1.4 approach decision:
 - No sokol modifications (project constraint)
 
 v1.4 Phase 18 decisions:
-- Overlay sibling positioning: Sibling above MTKView (not child) to avoid Metal rendering interference
+- Overlay sibling positioning: Sibling above MTKView (not child) to avoid Metal rendering
 - ARC memory management: __bridge_retained for C ownership transfer
 
 v1.4 Phase 19 decisions:
@@ -51,6 +51,8 @@ v1.4 Phase 19 decisions:
 - cursor_pos in callback is selectedRange.location (byte offset within preedit)
 - Thick underline = selected clause (style=2), other underlines = raw (style=0)
 - Y-flip: self.bounds.size.height - y - h for macOS bottom-left origin
+- Handler methods on CompositionState to encapsulate callback processing
+- TextSystem.draw_composition wraps Renderer (private) for public API
 
 ### Pending Todos
 
@@ -63,13 +65,18 @@ None.
 - Korean jamo backspace behavior less documented than Japanese/Chinese
 - Research confidence: MEDIUM-HIGH overall
 
+**Overlay API limitation** (documented 2026-02-04):
+- editor_demo uses global callback API because gg doesn't expose MTKView handle
+- Overlay API is implemented but registration commented out pending native handle access
+- Single-field apps work fine; multi-field apps need native handle access
+
 ### Known Issues
 
 None active.
 
 ## Session Continuity
 
-Last session: 2026-02-03
-Stopped at: Completed 19-02-PLAN.md
+Last session: 2026-02-04
+Stopped at: Completed Phase 19 (all 3 plans)
 Resume file: None
-Next: Execute 19-03-PLAN.md
+Next: Phase 20 (CJK IME Testing) or Phase 21 (Korean Hangul Backspace)
