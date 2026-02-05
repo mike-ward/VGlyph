@@ -8,73 +8,75 @@ import strings
 //
 // Returns error if:
 // - pango_layout_new returns null (memory allocation failure)
-fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLayout {
+fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !PangoLayout {
 	// Configure Context Gravity/Orientation
-	C.pango_context_set_base_gravity(ctx.pango_context, .pango_gravity_south)
-	C.pango_context_set_gravity_hint(ctx.pango_context, .pango_gravity_hint_natural)
-	C.pango_context_set_matrix(ctx.pango_context, unsafe { nil })
-	C.pango_context_changed(ctx.pango_context)
+	C.pango_context_set_base_gravity(ctx.pango_context.ptr, .pango_gravity_south)
+	C.pango_context_set_gravity_hint(ctx.pango_context.ptr, .pango_gravity_hint_natural)
+	C.pango_context_set_matrix(ctx.pango_context.ptr, unsafe { nil })
+	C.pango_context_changed(ctx.pango_context.ptr)
 
-	layout := C.pango_layout_new(ctx.pango_context)
-	if layout == unsafe { nil } {
+	ptr := C.pango_layout_new(ctx.pango_context.ptr)
+	if ptr == unsafe { nil } {
 		log.error('${@FILE_LINE}: failed to create Pango layout')
 		return error('failed to create Pango layout')
 	}
+	mut layout := PangoLayout{
+		ptr: ptr
+	}
 
 	if cfg.use_markup {
-		C.pango_layout_set_markup(layout, text.str, text.len)
+		layout.set_markup(text)
 	} else {
-		C.pango_layout_set_text(layout, text.str, text.len)
+		layout.set_text(text)
 	}
 
 	// Apply layout configuration
 	if cfg.block.width > 0 {
 		// Apply DPI scaling to input width (Logical -> Pango Units)
-		C.pango_layout_set_width(layout, int(cfg.block.width * ctx.scale_factor * pango_scale))
+		layout.set_width(int(cfg.block.width * ctx.scale_factor * pango_scale))
 		pango_wrap := match cfg.block.wrap {
 			.word { PangoWrapMode.pango_wrap_word }
 			.char { PangoWrapMode.pango_wrap_char }
 			.word_char { PangoWrapMode.pango_wrap_word_char }
 		}
-		C.pango_layout_set_wrap(layout, pango_wrap)
+		layout.set_wrap(pango_wrap)
 	}
 	pango_align := match cfg.block.align {
 		.left { PangoAlignment.pango_align_left }
 		.center { PangoAlignment.pango_align_center }
 		.right { PangoAlignment.pango_align_right }
 	}
-	C.pango_layout_set_alignment(layout, pango_align)
+	layout.set_alignment(pango_align)
 	if cfg.block.indent != 0 {
 		// Apply DPI scaling to indent
-		C.pango_layout_set_indent(layout, int(cfg.block.indent * ctx.scale_factor * pango_scale))
+		layout.set_indent(int(cfg.block.indent * ctx.scale_factor * pango_scale))
 	}
 
-	desc := ctx.create_font_description(cfg.style)
-	if desc != unsafe { nil } {
-		C.pango_layout_set_font_description(layout, desc)
-		C.pango_font_description_free(desc)
+	mut desc := ctx.create_font_description(cfg.style)
+	if !desc.is_nil() {
+		layout.set_font_description(desc)
+		desc.free()
 	}
 
 	// Apply Style Attributes
-	mut attr_list := unsafe { &C.PangoAttrList(nil) }
+	mut attr_list := PangoAttrList{}
 
-	existing_list := C.pango_layout_get_attributes(layout)
+	existing_list := layout.get_attributes()
 	if existing_list != unsafe { nil } {
-		attr_list = C.pango_attr_list_copy(existing_list)
+		attr_list.ptr = C.pango_attr_list_copy(existing_list)
 		track_attr_list_alloc()
 	} else {
-		attr_list = C.pango_attr_list_new()
-		track_attr_list_alloc()
+		attr_list = new_pango_attr_list()
 	}
 
-	if attr_list != unsafe { nil } {
+	if !attr_list.is_nil() {
 		// Background Color
 		if cfg.style.bg_color.a > 0 {
 			mut bg_attr := C.pango_attr_background_new(u16(cfg.style.bg_color.r) << 8,
 				u16(cfg.style.bg_color.g) << 8, u16(cfg.style.bg_color.b) << 8)
 			bg_attr.start_index = 0
 			bg_attr.end_index = u32(C.G_MAXUINT)
-			C.pango_attr_list_insert(attr_list, bg_attr)
+			C.pango_attr_list_insert(attr_list.ptr, bg_attr)
 		}
 
 		// Underline
@@ -82,7 +84,7 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 			mut u_attr := C.pango_attr_underline_new(.pango_underline_single)
 			u_attr.start_index = 0
 			u_attr.end_index = u32(C.G_MAXUINT)
-			C.pango_attr_list_insert(attr_list, u_attr)
+			C.pango_attr_list_insert(attr_list.ptr, u_attr)
 		}
 
 		// Strikethrough
@@ -90,7 +92,7 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 			mut s_attr := C.pango_attr_strikethrough_new(true)
 			s_attr.start_index = 0
 			s_attr.end_index = u32(C.G_MAXUINT)
-			C.pango_attr_list_insert(attr_list, s_attr)
+			C.pango_attr_list_insert(attr_list.ptr, s_attr)
 		}
 
 		// OpenType Features
@@ -108,24 +110,25 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !&C.PangoLay
 			mut f_attr := C.pango_attr_font_features_new(&char(features_str.str))
 			f_attr.start_index = 0
 			f_attr.end_index = u32(C.G_MAXUINT)
-			C.pango_attr_list_insert(attr_list, f_attr)
+			C.pango_attr_list_insert(attr_list.ptr, f_attr)
 		}
 
-		C.pango_layout_set_attributes(layout, attr_list)
-		track_attr_list_free()
-		C.pango_attr_list_unref(attr_list)
+		layout.set_attributes(attr_list)
+		attr_list.free()
 	}
 
 	// Apply Tabs
 	if cfg.block.tabs.len > 0 {
-		tab_array := C.pango_tab_array_new(cfg.block.tabs.len, 0)
+		mut tab_array := PangoTabArray{
+			ptr: C.pango_tab_array_new(cfg.block.tabs.len, 0)
+		}
 		for i, pos_px in cfg.block.tabs {
 			// Pango tabs are in Pango units
 			pos_pango := int(pos_px * ctx.scale_factor * pango_scale)
-			C.pango_tab_array_set_tab(tab_array, i, .pango_tab_left, pos_pango)
+			C.pango_tab_array_set_tab(tab_array.ptr, i, .pango_tab_left, pos_pango)
 		}
-		C.pango_layout_set_tabs(layout, tab_array)
-		C.pango_tab_array_free(tab_array)
+		layout.set_tabs(tab_array)
+		tab_array.free()
 	}
 
 	return layout

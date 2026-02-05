@@ -18,6 +18,52 @@ pub fn (mut p PangoLayout) free() {
 	}
 }
 
+pub fn (p PangoLayout) set_text(text string) {
+	C.pango_layout_set_text(p.ptr, text.str, text.len)
+}
+
+pub fn (p PangoLayout) set_markup(text string) {
+	C.pango_layout_set_markup(p.ptr, text.str, text.len)
+}
+
+pub fn (p PangoLayout) set_width(width int) {
+	C.pango_layout_set_width(p.ptr, width)
+}
+
+pub fn (p PangoLayout) set_wrap(wrap PangoWrapMode) {
+	C.pango_layout_set_wrap(p.ptr, wrap)
+}
+
+pub fn (p PangoLayout) set_alignment(align PangoAlignment) {
+	C.pango_layout_set_alignment(p.ptr, align)
+}
+
+pub fn (p PangoLayout) set_indent(indent int) {
+	C.pango_layout_set_indent(p.ptr, indent)
+}
+
+pub fn (p PangoLayout) set_font_description(desc PangoFontDescription) {
+	C.pango_layout_set_font_description(p.ptr, desc.ptr)
+}
+
+pub fn (p PangoLayout) set_attributes(attrs PangoAttrList) {
+	C.pango_layout_set_attributes(p.ptr, attrs.ptr)
+}
+
+pub fn (p PangoLayout) get_attributes() &C.PangoAttrList {
+	return C.pango_layout_get_attributes(p.ptr)
+}
+
+pub fn (p PangoLayout) set_tabs(tabs PangoTabArray) {
+	C.pango_layout_set_tabs(p.ptr, tabs.ptr)
+}
+
+pub fn (p PangoLayout) get_iter() PangoLayoutIter {
+	return PangoLayoutIter{
+		ptr: C.pango_layout_get_iter(p.ptr)
+	}
+}
+
 pub struct PangoContext {
 pub mut:
 	ptr &C.PangoContext = unsafe { nil }
