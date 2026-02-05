@@ -173,6 +173,54 @@ pub fn (ts &TextSystem) get_atlas_image() gg.Image {
 	return ts.renderer.atlas.pages[0].image
 }
 
+// ShelfDebugInfo provides shelf data for visualization.
+pub struct ShelfDebugInfo {
+pub:
+	y        int // Shelf top Y position
+	height   int // Shelf height
+	used_x   int // Used horizontal space (cursor_x)
+	width    int // Total shelf width
+}
+
+// AtlasDebugInfo provides atlas layout info for visualization.
+pub struct AtlasDebugInfo {
+pub:
+	page_width   int
+	page_height  int
+	shelves      []ShelfDebugInfo
+	used_pixels  i64
+	total_pixels i64
+}
+
+// get_atlas_debug_info returns shelf layout info for visualization.
+pub fn (ts &TextSystem) get_atlas_debug_info() AtlasDebugInfo {
+	if ts.renderer == unsafe { nil } {
+		return AtlasDebugInfo{}
+	}
+	if ts.renderer.atlas.pages.len == 0 {
+		return AtlasDebugInfo{}
+	}
+	page := ts.renderer.atlas.pages[ts.renderer.atlas.current_page]
+
+	mut shelves := []ShelfDebugInfo{cap: page.shelves.len}
+	for shelf in page.shelves {
+		shelves << ShelfDebugInfo{
+			y:      shelf.y
+			height: shelf.height
+			used_x: shelf.cursor_x
+			width:  shelf.width
+		}
+	}
+
+	return AtlasDebugInfo{
+		page_width:   page.width
+		page_height:  page.height
+		shelves:      shelves
+		used_pixels:  page.used_pixels
+		total_pixels: i64(page.width) * i64(page.height)
+	}
+}
+
 // add_font_file registers a font file (TTF/OTF).
 // Once added, refer to font by its family name in TextConfig.font_name.
 //
