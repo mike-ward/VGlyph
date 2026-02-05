@@ -109,10 +109,26 @@ pub fn (mut renderer Renderer) commit() {
 			renderer.upload_time_ns += time.sys_mono_now() - start
 		}
 	}
-	// Update all dirty pages
+	// Sync fallback path (when async_uploads disabled)
+	if !renderer.atlas.async_uploads {
+		for mut page in renderer.atlas.pages {
+			if page.dirty {
+				// Copy staging_back directly to image.data, upload
+				unsafe {
+					vmemcpy(page.image.data, page.staging_back.data, page.staging_back.len)
+				}
+				page.image.update_pixel_data(page.image.data)
+				page.dirty = false
+			}
+		}
+		return
+	}
+
+	// Async path: swap buffers then upload from front
 	for mut page in renderer.atlas.pages {
 		if page.dirty {
-			page.image.update_pixel_data(page.image.data)
+			page.swap_staging_buffers()
+			page.image.update_pixel_data(page.staging_front.data)
 			page.dirty = false
 		}
 	}
