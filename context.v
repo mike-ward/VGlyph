@@ -493,7 +493,7 @@ pub fn (mut ctx Context) create_font_description(style TextStyle) PangoFontDescr
 			ptr: unsafe { nil }
 		}
 	}
-	mut desc := PangoFontDescription{
+	desc := PangoFontDescription{
 		ptr: desc_ptr
 	}
 

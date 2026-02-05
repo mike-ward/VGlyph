@@ -20,7 +20,7 @@ fn setup_pango_layout(mut ctx Context, text string, cfg TextConfig) !PangoLayout
 		log.error('${@FILE_LINE}: failed to create Pango layout')
 		return error('failed to create Pango layout')
 	}
-	mut layout := PangoLayout{
+	layout := PangoLayout{
 		ptr: ptr
 	}
 
