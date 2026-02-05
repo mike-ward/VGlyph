@@ -107,6 +107,47 @@ fn frame(mut app AppAtlasDebug) {
 		}
 	)
 
+	// Get shelf debug info
+	debug_info := app.text_system.get_atlas_debug_info()
+
+	// Calculate scale factor (atlas displayed at 50%)
+	scale := atlas_w / f32(debug_info.page_width)
+
+	// Draw shelf boundaries
+	for shelf in debug_info.shelves {
+		// Shelf top boundary
+		shelf_y := atlas_y + f32(shelf.y) * scale
+		shelf_h := f32(shelf.height) * scale
+		used_w := f32(shelf.used_x) * scale
+
+		// Draw shelf outline (gray, full width)
+		app.ctx.draw_rect_empty(atlas_x, shelf_y, atlas_w, shelf_h, gg.rgb(80, 80, 80))
+
+		// Draw used portion (green fill, low alpha)
+		app.ctx.draw_rect_filled(atlas_x, shelf_y, used_w, shelf_h, gg.Color{
+			r: 0
+			g: 255
+			b: 0
+			a: 40
+		})
+
+		// Draw used boundary (bright green line)
+		app.ctx.draw_line(atlas_x + used_w, shelf_y, atlas_x + used_w, shelf_y + shelf_h,
+			gg.rgb(0, 255, 0))
+	}
+
+	// Display utilization percentage
+	utilization := if debug_info.total_pixels > 0 {
+		f32(debug_info.used_pixels) / f32(debug_info.total_pixels) * 100.0
+	} else {
+		0.0
+	}
+	util_text := 'Utilization: ${utilization:.1f}% (${debug_info.shelves.len} shelves)'
+	app.ctx.draw_text(int(atlas_x), int(atlas_y + atlas_h + 10), util_text, gg.TextCfg{
+		color: gg.white
+		size:  14
+	})
+
 	app.ctx.draw_text(int(atlas_x), int(atlas_y - 20), 'Glyph Atlas Texture (Scaled 50%):',
 		gg.TextCfg{
 		color: gg.white
