@@ -4,14 +4,7 @@
 
 ## Tech Debt
 
-**Manual Memory Management:**
-- Issue: Complex manual lifecycle management of Pango/GObject pointers using `defer`, `free`, and
-  explicit unreferencing.
-- Files: `layout.v`, `context.v`, `c_bindings.v`
-- Impact: High risk of memory leaks or "double-free" crashes if logic paths are modified without
-  deep understanding.
-- Fix approach: Encapsulate C pointers in V structs with strictly defined `free()` methods and
-  RAII-like ownership patterns.
+*None currently identified as high priority.*
 
 ## Known Bugs / Incomplete Features
 
@@ -35,7 +28,7 @@
 **Unsafe Block Usage:**
 - Risk: `unsafe` blocks allow direct memory manipulation and pointer dereferencing, bypassing V's
   safety checks.
-- Files: `api.v`, `c_bindings.v`
+- Files: `api.v`, `c_bindings.v`, `pango_wrappers.v`
 - Current mitigation: Defensive checks `if ptr == unsafe { nil }`.
 - Note: The use of `unsafe { nil }` for pointer initialization and null-checks is a permitted and
   established pattern in this project.
