@@ -176,10 +176,10 @@ pub fn (ts &TextSystem) get_atlas_image() gg.Image {
 // ShelfDebugInfo provides shelf data for visualization.
 pub struct ShelfDebugInfo {
 pub:
-	y        int // Shelf top Y position
-	height   int // Shelf height
-	used_x   int // Used horizontal space (cursor_x)
-	width    int // Total shelf width
+	y      int // Shelf top Y position
+	height int // Shelf height
+	used_x int // Used horizontal space (cursor_x)
+	width  int // Total shelf width
 }
 
 // AtlasDebugInfo provides atlas layout info for visualization.
