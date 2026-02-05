@@ -5,22 +5,50 @@
 See: .planning/PROJECT.md (updated 2026-02-04)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** v1.6 Performance Optimization
+**Current focus:** v1.6 Performance Optimization - Phase 26 Shelf Packing
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-02-04 — Milestone v1.6 started
+Phase: 26 of 29 (Shelf Packing)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-02-04 — v1.6 roadmap created
 
-Progress: ██████████████████████████████ 25/25 phases (v1.0-v1.5 complete)
+Progress: ██████████████████████████████░░░░ 25/29 phases (86%)
+
+## Performance Metrics
+
+**Velocity:**
+- Total phases completed: 25
+- Phases per milestone avg: 4.2
+- Total milestones shipped: 5
+
+**By Milestone:**
+
+| Milestone | Phases | Status |
+|-----------|--------|--------|
+| v1.0 Memory Safety | 3 | Complete |
+| v1.1 Fragile Hardening | 4 | Complete |
+| v1.2 Performance v1 | 3 | Complete |
+| v1.3 Text Editing | 7 | Complete |
+| v1.4 CJK IME | 4 | Complete (partial Korean) |
+| v1.5 Quality Audit | 4 | Complete |
+| v1.6 Performance v2 | 4 | In progress |
+
+**Recent Activity:**
+- v1.5 completed 2026-02-04 (security, consistency, docs, verification)
+- v1.6 roadmap created 2026-02-04
 
 ## Accumulated Context
 
 ### Decisions
 
-See PROJECT.md Key Decisions table for full history.
+See PROJECT.md Key Decisions table for full history (36 decisions documented).
+
+Recent decisions affecting current work:
+- Phase 25: Test suite validation pattern established
+- Phase 24: API documentation standards
+- Phase 10: Profile instrumentation architecture
 
 ### Pending Todos
 
@@ -28,15 +56,15 @@ None.
 
 ### Known Issues
 
-**Korean IME first-keypress** - macOS-level bug, reported upstream. User workaround: type first
-character twice, or refocus field.
+**Korean IME first-keypress** - macOS-level bug, reported upstream (Qt QTBUG-136128, Apple
+FB17460926, Alacritty #6942). User workaround: type first char twice or refocus field.
 
-**Overlay API limitation** - editor_demo uses global callback API because gg doesn't expose MTKView
-handle. Multi-field apps need native handle access.
+**Overlay API limitation** - editor_demo uses global callback API because gg doesn't expose
+MTKView handle. Multi-field apps need native handle access.
 
 ## Session Continuity
 
 Last session: 2026-02-04
-Stopped at: v1.5 milestone complete
+Stopped at: v1.6 roadmap creation
 Resume file: .planning/ROADMAP.md
-Resume command: `/gsd:new-milestone`
+Resume command: `/gsd:plan-phase 26`

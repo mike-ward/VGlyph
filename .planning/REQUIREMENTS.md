@@ -60,21 +60,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ATLAS-01 | TBD | Pending |
-| ATLAS-02 | TBD | Pending |
-| ATLAS-03 | TBD | Pending |
-| GPU-01 | TBD | Pending |
-| GPU-02 | TBD | Pending |
-| GPU-03 | TBD | Pending |
-| PROF-01 | TBD | Pending |
-| PROF-02 | TBD | Pending |
-| SHAPE-01 | TBD | Pending |
+| ATLAS-01 | Phase 26 | Pending |
+| ATLAS-02 | Phase 26 | Pending |
+| ATLAS-03 | Phase 26 | Pending |
+| GPU-01 | Phase 27 | Pending |
+| GPU-02 | Phase 27 | Pending |
+| GPU-03 | Phase 27 | Pending |
+| PROF-01 | Phase 28 | Pending |
+| PROF-02 | Phase 28 | Pending |
+| SHAPE-01 | Phase 29 | Conditional |
 
 **Coverage:**
 - v1.6 requirements: 9 total
-- Mapped to phases: 0
-- Unmapped: 9 ⚠️
+- Mapped to phases: 9
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-04 after initial definition*
+*Last updated: 2026-02-04 after roadmap creation*

@@ -8,6 +8,7 @@
 - ✅ **v1.3 Text Editing** — Phases 11-17 (shipped 2026-02-03)
 - ✅ **v1.4 CJK IME** — Phases 18-21 (shipped 2026-02-04, Korean first-keypress known issue)
 - ✅ **v1.5 Codebase Quality Audit** — Phases 22-25 (shipped 2026-02-04)
+- 🚧 **v1.6 Performance Optimization** — Phases 26-29 (in progress)
 
 ## Phases
 
@@ -82,6 +83,87 @@ See: .planning/milestones/v1.5-ROADMAP.md for full details.
 
 </details>
 
+### 🚧 v1.6 Performance Optimization (In Progress)
+
+**Milestone Goal:** Production-ready performance with efficient atlas allocation, non-blocking
+GPU uploads, and HarfBuzz shaping optimization.
+
+#### Phase 26: Shelf Packing
+
+**Goal:** Atlas pages use shelf-based allocation with best-height-fit algorithm
+
+**Depends on:** Phase 25
+
+**Requirements:** ATLAS-01, ATLAS-02, ATLAS-03
+
+**Success Criteria** (what must be TRUE):
+  1. Atlas pages allocate glyphs using shelf best-height-fit algorithm
+  2. Atlas utilization exceeds 75% on typical text (measured via -d profile)
+  3. Page-level LRU eviction behavior preserved (no regressions)
+  4. Shelf boundaries visible in atlas_debug example output
+
+**Plans:** TBD
+
+Plans:
+- [ ] 26-01: TBD
+
+#### Phase 27: Async Texture Updates
+
+**Goal:** GPU uploads overlapped with CPU rasterization via double-buffered staging
+
+**Depends on:** Phase 26
+
+**Requirements:** GPU-01, GPU-02, GPU-03
+
+**Success Criteria** (what must be TRUE):
+  1. Texture uploads use double-buffered pixel staging per atlas page
+  2. CPU rasterization overlaps with GPU upload (no blocking)
+  3. commit() → draw ordering preserved (no frame corruption)
+  4. Upload time visible in -d profile metrics
+
+**Plans:** TBD
+
+Plans:
+- [ ] 27-01: TBD
+
+#### Phase 28: Profiling Validation
+
+**Goal:** Measure optimization impact and decide on shape cache need
+
+**Depends on:** Phase 27
+
+**Requirements:** PROF-01, PROF-02
+
+**Success Criteria** (what must be TRUE):
+  1. LayoutCache hit rate tracked in -d profile output
+  2. Atlas utilization improvements measured (shelf vs old row-based)
+  3. Upload time improvements measured (async vs old sync)
+  4. Decision made on SHAPE-01 based on LayoutCache hit rate threshold
+
+**Plans:** TBD
+
+Plans:
+- [ ] 28-01: TBD
+
+#### Phase 29: Shape Cache (Conditional)
+
+**Goal:** HarfBuzz shape plan caching if LayoutCache hit rate below 70%
+
+**Depends on:** Phase 28
+
+**Requirements:** SHAPE-01
+
+**Success Criteria** (what must be TRUE):
+  1. CONDITIONAL: Execute only if Phase 28 profiling shows LayoutCache hit rate <70%
+  2. If executed: HarfBuzz shape plans cached with LRU eviction (256 entries)
+  3. If executed: Shape cache hit rate visible in -d profile metrics
+  4. If skipped: SHAPE-01 deferred to future milestone with rationale documented
+
+**Plans:** TBD
+
+Plans:
+- [ ] 29-01: TBD (conditional on profiling results)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -111,6 +193,10 @@ See: .planning/milestones/v1.5-ROADMAP.md for full details.
 | 23. Code Consistency | v1.5 | 3/3 | Complete | 2026-02-04 |
 | 24. Documentation | v1.5 | 3/3 | Complete | 2026-02-04 |
 | 25. Verification | v1.5 | 1/1 | Complete | 2026-02-04 |
+| 26. Shelf Packing | v1.6 | 0/? | Not started | - |
+| 27. Async Texture Updates | v1.6 | 0/? | Not started | - |
+| 28. Profiling Validation | v1.6 | 0/? | Not started | - |
+| 29. Shape Cache | v1.6 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-02-04 — v1.5 Codebase Quality Audit milestone complete*
+*Last updated: 2026-02-04 — v1.6 Performance Optimization roadmap created*
