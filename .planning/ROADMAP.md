@@ -151,10 +151,11 @@ preserved
      works identically to v1.7 behavior
   4. `v build` succeeds on Linux without macOS overlay code
      compiling or linking
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 33-01: TBD
+- [ ] 33-01-PLAN.md -- MTKView discovery + auto-create API + stubs
+- [ ] 33-02-PLAN.md -- editor_demo overlay wiring + two fields
 
 #### Phase 34: Documentation & Verification
 **Goal**: Project documentation reflects overlay API activation and
