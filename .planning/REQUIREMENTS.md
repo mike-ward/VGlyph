@@ -21,12 +21,12 @@ Requirements for performance optimization milestone. Each maps to roadmap phases
 
 ### Profiling
 
-- [ ] **PROF-01**: LayoutCache hit rate measurement (before shape cache decision)
-- [ ] **PROF-02**: Atlas utilization metrics (validate shelf packing improvement)
+- [x] **PROF-01**: LayoutCache hit rate measurement (before shape cache decision)
+- [x] **PROF-02**: Atlas utilization metrics (validate shelf packing improvement)
 
 ### Shape Caching (Conditional)
 
-- [ ] **SHAPE-01**: HarfBuzz shape plan caching (only if LayoutCache hit rate < 70%)
+- [x] **SHAPE-01**: HarfBuzz shape plan caching — SKIPPED (LayoutCache 92.3% > 70%)
 
 ## Future Requirements
 
@@ -66,9 +66,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GPU-01 | Phase 27 | Complete |
 | GPU-02 | Phase 27 | Complete |
 | GPU-03 | Phase 27 | Complete |
-| PROF-01 | Phase 28 | Pending |
-| PROF-02 | Phase 28 | Pending |
-| SHAPE-01 | Phase 29 | Conditional |
+| PROF-01 | Phase 28 | Complete |
+| PROF-02 | Phase 28 | Complete |
+| SHAPE-01 | Phase 29 | Skipped |
 
 **Coverage:**
 - v1.6 requirements: 9 total
@@ -77,4 +77,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-02-04*
-*Last updated: 2026-02-05 — GPU-01/02/03 complete (Phase 27)*
+*Last updated: 2026-02-05 — PROF-01/02 complete, SHAPE-01 skipped (Phase 28)*

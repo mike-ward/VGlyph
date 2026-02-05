@@ -572,4 +572,9 @@ $if profile ? {
 
 		// Note: Don't reset atlas counters - they represent lifetime stats
 	}
+
+	// set_async_uploads toggles async texture upload mode (profiling only).
+	pub fn (mut ts TextSystem) set_async_uploads(enabled bool) {
+		ts.renderer.atlas.async_uploads = enabled
+	}
 }

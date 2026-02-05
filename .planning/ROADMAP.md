@@ -144,19 +144,24 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 28-01-PLAN.md — Stress test, profiling, P29 decision
+- [x] 28-01-PLAN.md — Stress test, profiling, P29 decision (completed 2026-02-05)
 
-#### Phase 29: Shape Cache (Conditional)
+#### Phase 29: Shape Cache (SKIPPED)
 
-**Goal:** HarfBuzz shape plan caching if LayoutCache hit rate below 70%
+**Status:** Skipped based on Phase 28 profiling data
 
-**Depends on:** Phase 28
+**Decision rationale:**
+- LayoutCache hit rate: 92.3% (well above 70% threshold)
+- Only 7.7% of lookups require HarfBuzz reshaping
+- Layout time negligible (2 us per frame, 3.6% of total)
+- Shape cache would optimize <8% of already-fast operation
+- Complexity not justified for ~1.8 us per frame improvement
 
-**Requirements:** SHAPE-01
+See: .planning/phases/28-profiling-validation/28-VERIFICATION.md
 
-**Success Criteria** (what must be TRUE):
-  1. CONDITIONAL: Execute only if Phase 28 profiling shows LayoutCache hit rate <70%
-  2. If executed: HarfBuzz shape plans cached with LRU eviction (256 entries)
+~~**Goal:** HarfBuzz shape plan caching if LayoutCache hit rate below 70%~~
+
+~~**Requirements:** SHAPE-01~~
   3. If executed: Shape cache hit rate visible in -d profile metrics
   4. If skipped: SHAPE-01 deferred to future milestone with rationale documented
 
@@ -196,8 +201,8 @@ Plans:
 | 25. Verification | v1.5 | 1/1 | Complete | 2026-02-04 |
 | 26. Shelf Packing | v1.6 | 2/2 | Complete | 2026-02-05 |
 | 27. Async Texture Updates | v1.6 | 1/1 | Complete | 2026-02-05 |
-| 28. Profiling Validation | v1.6 | 0/1 | Not started | - |
-| 29. Shape Cache | v1.6 | 0/? | Not started | - |
+| 28. Profiling Validation | v1.6 | 1/1 | Complete | 2026-02-05 |
+| 29. Shape Cache | v1.6 | N/A | Skipped | 2026-02-05 |
 
 ---
-*Last updated: 2026-02-05 — Phase 28 planned (1 plan)*
+*Last updated: 2026-02-05 — Phase 28 complete, Phase 29 skipped (LayoutCache 92.3%)*
