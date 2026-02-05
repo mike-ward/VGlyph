@@ -6,6 +6,8 @@
 #ifndef VGLYPH_IME_OVERLAY_DARWIN_H
 #define VGLYPH_IME_OVERLAY_DARWIN_H
 
+#include <stdbool.h>
+
 // Opaque handle to overlay view
 typedef void* VGlyphOverlayHandle;
 
