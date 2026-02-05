@@ -49,14 +49,12 @@ fn check_allocation_size(w int, h int, channels int, location string) !i64 {
 // AtlasPage represents a single texture page in a multi-page atlas.
 struct AtlasPage {
 mut:
-	image      gg.Image
-	width      int
-	height     int
-	cursor_x   int
-	cursor_y   int
-	row_height int
-	dirty      bool
-	age        u64 // Frame counter when last used
+	image   gg.Image
+	width   int
+	height  int
+	shelves []Shelf
+	dirty   bool
+	age     u64 // Frame counter when last used
 	// Profile fields
 	used_pixels i64
 }
@@ -92,6 +90,14 @@ pub:
 	font_face    voidptr
 	glyph_index  u32
 	subpixel_bin u8
+}
+
+struct Shelf {
+mut:
+	y        int // Vertical position of shelf top
+	height   int // Shelf height (fixed at creation)
+	cursor_x int // Next free x position
+	width    int // Shelf width (page width)
 }
 
 // new_atlas_page creates a new atlas page with the given dimensions.
@@ -139,6 +145,7 @@ fn new_atlas_page(mut ctx gg.Context, w int, h int) !AtlasPage {
 		image:       img
 		width:       w
 		height:      h
+		shelves:     []Shelf{}
 		age:         0
 		used_pixels: 0
 	}
@@ -594,9 +601,7 @@ fn (mut atlas GlyphAtlas) reset_page(page_idx int) {
 		atlas.atlas_resets++
 	}
 	mut page := &atlas.pages[page_idx]
-	page.cursor_x = 0
-	page.cursor_y = 0
-	page.row_height = 0
+	page.shelves.clear()
 	page.used_pixels = 0
 	page.age = atlas.frame_counter // Mark as most recently used (just reset)
 
