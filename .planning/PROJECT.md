@@ -69,7 +69,11 @@ Reliable text rendering without crashes or undefined behavior.
 
 ### Active
 
-(None — run `/gsd:new-milestone` for next milestone)
+- [ ] Fix stress_demo flickering during scroll
+- [ ] Fix visible rendering delays in stress_demo
+- [ ] Fix blank scroll regions in stress_demo
+- [ ] Verify all examples work without regressions
+- [ ] Rollback individual v1.6 changes if root cause unfixable
 
 ### Out of Scope
 - Thread safety — V is single-threaded by design
@@ -94,6 +98,8 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
 - Editing: Cursor, selection, mutation, undo/redo, VoiceOver accessibility
 - IME: Japanese/Chinese fully working, Korean partial (macOS first-keypress bug)
 - Shipped: v1.0-v1.6 (7 milestones, 28 phases)
+- **Regressions:** v1.6 introduced flickering, delays, blank regions in
+  stress_demo (intermittent, async uploads suspected)
 
 ## Constraints
 
@@ -143,5 +149,5 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
 | Skip P29 shape cache | 92.3% LayoutCache hit rate, ROI too low | Good - data-driven |
 
 ---
-*Last updated: 2026-02-05 after v1.6 milestone*
+*Last updated: 2026-02-05 after v1.7 milestone start*
 *Korean first-keypress: Qt QTBUG-136128, Apple FB17460926, Alacritty #6942*

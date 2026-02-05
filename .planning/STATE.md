@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Reliable text rendering without crashes or undefined behavior
-**Current focus:** Planning next milestone
+**Current focus:** v1.7 Stabilization — fix v1.6 regressions
 
 ## Current Position
 
-Phase: 29 of 29 (v1.6 complete)
-Plan: N/A
-Status: Ready to plan next milestone
-Last activity: 2026-02-05 — v1.6 milestone archived
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-05 — Milestone v1.7 started
 
-Progress: ████████████████ 29/29 (100%, 7 milestones)
+Progress: ░░░░░░░░░░░░░░░░ 0/0 (v1.7)
 
 ## Performance Metrics
 
@@ -34,12 +34,13 @@ Progress: ████████████████ 29/29 (100%, 7 milest
 | v1.4 CJK IME | 4 | Complete (partial Korean) |
 | v1.5 Quality Audit | 4 | Complete |
 | v1.6 Performance v2 | 4 | Complete (P29 skipped) |
+| v1.7 Stabilization | 0 | Defining requirements |
 
 ## Accumulated Context
 
 ### Decisions
 
-See PROJECT.md Key Decisions table for full history (44 decisions documented).
+See PROJECT.md Key Decisions table for full history (44 decisions).
 
 ### Pending Todos
 
@@ -47,15 +48,18 @@ None.
 
 ### Known Issues
 
-**Korean IME first-keypress** - macOS-level bug, reported upstream (Qt QTBUG-136128,
-Apple FB17460926, Alacritty #6942).
+**v1.6 regressions** - stress_demo flickering, rendering delays, blank
+scroll regions. Intermittent. Async uploads suspected but unconfirmed.
 
-**Overlay API limitation** - editor_demo uses global callback API because gg doesn't
-expose MTKView handle.
+**Korean IME first-keypress** - macOS-level bug, reported upstream
+(Qt QTBUG-136128, Apple FB17460926, Alacritty #6942).
+
+**Overlay API limitation** - editor_demo uses global callback API
+because gg doesn't expose MTKView handle.
 
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: v1.6 milestone archived
-Resume file: None (milestone complete)
-Resume command: `/gsd:new-milestone`
+Stopped at: Defining v1.7 requirements
+Resume file: None
+Resume command: `/gsd:new-milestone` (in progress)
