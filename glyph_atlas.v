@@ -49,14 +49,15 @@ fn check_allocation_size(w int, h int, channels int, location string) !i64 {
 // AtlasPage represents a single texture page in a multi-page atlas.
 struct AtlasPage {
 mut:
-	image   gg.Image
-	width   int
-	height  int
-	shelves []Shelf
-	dirty   bool
-	age     u64 // Frame counter when last used
-	// Profile fields
-	used_pixels i64
+	image         gg.Image
+	width         int
+	height        int
+	shelves       []Shelf
+	dirty         bool
+	age           u64 // Frame counter when last used
+	used_pixels   i64
+	staging_front []u8 // GPU upload source
+	staging_back  []u8 // CPU rasterization target
 }
 
 pub struct GlyphAtlas {
@@ -69,6 +70,7 @@ pub mut:
 	max_height    int = 4096
 	garbage       []int
 	last_frame    u64
+	async_uploads bool = true // Kill switch: false = sync fallback
 	// Profile fields - only accessed when -d profile is used
 	atlas_inserts       int
 	atlas_grows         int
@@ -141,13 +143,19 @@ fn new_atlas_page(mut ctx gg.Context, w int, h int) !AtlasPage {
 		return error('failed to allocate atlas page memory: ${size} bytes')
 	}
 
+	// Allocate staging buffers upfront
+	staging_front := []u8{len: int(size), init: 0}
+	staging_back := []u8{len: int(size), init: 0}
+
 	return AtlasPage{
-		image:       img
-		width:       w
-		height:      h
-		shelves:     []Shelf{}
-		age:         0
-		used_pixels: 0
+		image:         img
+		width:         w
+		height:        h
+		shelves:       []Shelf{}
+		age:           0
+		used_pixels:   0
+		staging_front: staging_front
+		staging_back:  staging_back
 	}
 }
 
@@ -669,7 +677,11 @@ fn (mut atlas GlyphAtlas) reset_page(page_idx int) {
 
 	// Zero out data to avoid visual artifacts from old glyphs
 	size := i64(page.width) * i64(page.height) * 4
-	unsafe { vmemset(page.image.data, 0, int(size)) }
+	unsafe {
+		vmemset(page.staging_back.data, 0, int(size))
+		vmemset(page.staging_front.data, 0, int(size))
+		vmemset(page.image.data, 0, int(size))
+	}
 	page.dirty = true
 }
 
@@ -705,6 +717,17 @@ pub fn (mut atlas GlyphAtlas) grow_page(page_idx int, new_height int) ! {
 		free(page.image.data)
 	}
 	page.image.data = new_data
+
+	// Reallocate staging buffers
+	mut new_staging_front := []u8{len: int(new_size), init: 0}
+	mut new_staging_back := []u8{len: int(new_size), init: 0}
+	// Copy old staging_back to preserve in-progress rasterization
+	unsafe {
+		vmemcpy(new_staging_back.data, page.staging_back.data, int(old_size))
+	}
+	page.staging_front = new_staging_front
+	page.staging_back = new_staging_back
+
 	page.height = new_height
 	page.image.height = new_height
 
@@ -732,6 +755,13 @@ pub fn (mut atlas GlyphAtlas) grow_page(page_idx int, new_height int) ! {
 	page.dirty = true // Force upload
 }
 
+// swap_staging_buffers swaps front and back staging buffers.
+fn (mut page AtlasPage) swap_staging_buffers() {
+	tmp := page.staging_front
+	page.staging_front = page.staging_back
+	page.staging_back = tmp
+}
+
 // copy_bitmap_to_page copies bitmap data to atlas page at (x, y).
 //
 // Returns error if:
@@ -751,7 +781,7 @@ fn copy_bitmap_to_page(mut page AtlasPage, bmp Bitmap, x int, y int) ! {
 	for row in 0 .. bmp.height {
 		unsafe {
 			src_ptr := &u8(bmp.data.data) + (row * bmp.width * 4)
-			dst_ptr := &u8(page.image.data) + ((y + row) * page.width + x) * 4
+			dst_ptr := &u8(page.staging_back.data) + ((y + row) * page.width + x) * 4
 			vmemcpy(dst_ptr, src_ptr, row_bytes)
 		}
 	}
