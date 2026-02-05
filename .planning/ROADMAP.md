@@ -2,18 +2,18 @@
 
 ## Milestones
 
-- ✅ **v1.0 Memory Safety** — Phases 1-3 (shipped 2026-02-02)
-- ✅ **v1.1 Fragile Area Hardening** — Phases 4-7 (shipped 2026-02-02)
-- ✅ **v1.2 Performance Optimization** — Phases 8-10 (shipped 2026-02-02)
-- ✅ **v1.3 Text Editing** — Phases 11-17 (shipped 2026-02-03)
-- ✅ **v1.4 CJK IME** — Phases 18-21 (shipped 2026-02-04, Korean first-keypress known issue)
-- ✅ **v1.5 Codebase Quality Audit** — Phases 22-25 (shipped 2026-02-04)
-- 🚧 **v1.6 Performance Optimization** — Phases 26-29 (in progress)
+- **v1.0 Memory Safety** — Phases 1-3 (shipped 2026-02-02)
+- **v1.1 Fragile Area Hardening** — Phases 4-7 (shipped 2026-02-02)
+- **v1.2 Performance Optimization** — Phases 8-10 (shipped 2026-02-02)
+- **v1.3 Text Editing** — Phases 11-17 (shipped 2026-02-03)
+- **v1.4 CJK IME** — Phases 18-21 (shipped 2026-02-04, Korean first-keypress known issue)
+- **v1.5 Codebase Quality Audit** — Phases 22-25 (shipped 2026-02-04)
+- **v1.6 Performance Optimization** — Phases 26-29 (in progress)
 
 ## Phases
 
 <details>
-<summary>✅ v1.0 Memory Safety (Phases 1-3) — SHIPPED 2026-02-02</summary>
+<summary>v1.0 Memory Safety (Phases 1-3) — SHIPPED 2026-02-02</summary>
 
 - [x] Phase 1: Error Propagation (1/1 plans) — completed 2026-02-01
 - [x] Phase 2: Memory Safety (1/1 plans) — completed 2026-02-01
@@ -22,7 +22,7 @@
 </details>
 
 <details>
-<summary>✅ v1.1 Fragile Area Hardening (Phases 4-7) — SHIPPED 2026-02-02</summary>
+<summary>v1.1 Fragile Area Hardening (Phases 4-7) — SHIPPED 2026-02-02</summary>
 
 - [x] Phase 4: Layout Iteration (1/1 plans) — completed 2026-02-02
 - [x] Phase 5: Attribute List (1/1 plans) — completed 2026-02-02
@@ -32,7 +32,7 @@
 </details>
 
 <details>
-<summary>✅ v1.2 Performance Optimization (Phases 8-10) — SHIPPED 2026-02-02</summary>
+<summary>v1.2 Performance Optimization (Phases 8-10) — SHIPPED 2026-02-02</summary>
 
 - [x] Phase 8: Instrumentation (2/2 plans) — completed 2026-02-02
 - [x] Phase 9: Latency Optimizations (3/3 plans) — completed 2026-02-02
@@ -43,7 +43,7 @@ See: .planning/milestones/v1.2-ROADMAP.md for full details.
 </details>
 
 <details>
-<summary>✅ v1.3 Text Editing (Phases 11-17) — SHIPPED 2026-02-03</summary>
+<summary>v1.3 Text Editing (Phases 11-17) — SHIPPED 2026-02-03</summary>
 
 - [x] Phase 11: Cursor Foundation (2/2 plans) — completed 2026-02-02
 - [x] Phase 12: Selection (2/2 plans) — completed 2026-02-02
@@ -58,7 +58,7 @@ See: .planning/milestones/v1.3-ROADMAP.md for full details.
 </details>
 
 <details>
-<summary>✅ v1.4 CJK IME (Phases 18-21) — SHIPPED 2026-02-04</summary>
+<summary>v1.4 CJK IME (Phases 18-21) — SHIPPED 2026-02-04</summary>
 
 - [x] Phase 18: Overlay Infrastructure (1/1 plans) — completed 2026-02-03
 - [x] Phase 19: NSTextInputClient + JP/CH (3/3 plans) — completed 2026-02-04
@@ -72,7 +72,7 @@ See: .planning/milestones/v1.4-ROADMAP.md for full details.
 </details>
 
 <details>
-<summary>✅ v1.5 Codebase Quality Audit (Phases 22-25) — SHIPPED 2026-02-04</summary>
+<summary>v1.5 Codebase Quality Audit (Phases 22-25) — SHIPPED 2026-02-04</summary>
 
 - [x] Phase 22: Security Audit (4/4 plans) — completed 2026-02-04
 - [x] Phase 23: Code Consistency (3/3 plans) — completed 2026-02-04
@@ -83,7 +83,7 @@ See: .planning/milestones/v1.5-ROADMAP.md for full details.
 
 </details>
 
-### 🚧 v1.6 Performance Optimization (In Progress)
+### v1.6 Performance Optimization (In Progress)
 
 **Milestone Goal:** Production-ready performance with efficient atlas allocation, non-blocking
 GPU uploads, and HarfBuzz shaping optimization.
@@ -102,10 +102,11 @@ GPU uploads, and HarfBuzz shaping optimization.
   3. Page-level LRU eviction behavior preserved (no regressions)
   4. Shelf boundaries visible in atlas_debug example output
 
-**Plans:** TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 26-01: TBD
+- [ ] 26-01-PLAN.md — Shelf BHF allocation algorithm
+- [ ] 26-02-PLAN.md — Debug visualization
 
 #### Phase 27: Async Texture Updates
 
@@ -193,10 +194,10 @@ Plans:
 | 23. Code Consistency | v1.5 | 3/3 | Complete | 2026-02-04 |
 | 24. Documentation | v1.5 | 3/3 | Complete | 2026-02-04 |
 | 25. Verification | v1.5 | 1/1 | Complete | 2026-02-04 |
-| 26. Shelf Packing | v1.6 | 0/? | Not started | - |
+| 26. Shelf Packing | v1.6 | 0/2 | Planned | - |
 | 27. Async Texture Updates | v1.6 | 0/? | Not started | - |
 | 28. Profiling Validation | v1.6 | 0/? | Not started | - |
 | 29. Shape Cache | v1.6 | 0/? | Not started | - |
 
 ---
-*Last updated: 2026-02-04 — v1.6 Performance Optimization roadmap created*
+*Last updated: 2026-02-04 — Phase 26 planned (2 plans)*
