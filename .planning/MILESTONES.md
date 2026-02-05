@@ -1,5 +1,35 @@
 # Project Milestones: VGlyph
 
+## v1.8 Overlay API Activation (Shipped: 2026-02-05)
+
+**Delivered:** Per-overlay IME API via MTKView auto-discovery from
+NSWindow, enabling multi-field IME support in editor_demo.
+
+**Phases completed:** 33-34 (4 plans total)
+
+**Key accomplishments:**
+
+- MTKView auto-discovery from NSWindow via recursive view hierarchy walk
+- editor_demo uses per-overlay IME with two independent text fields
+- Global callback fallback preserved (`--global-ime` flag)
+- 6 critical macOS integration fixes (inputContext, makeFirstResponder,
+  Korean IME, triple character echo)
+- Full docs update: SECURITY.md trust boundary, README overlay API
+- CJK IME regression verified (JP/CH/KR all working through overlay)
+
+**Stats:**
+
+- 29 files modified (+3,482/-356)
+- 15,010 lines of V/Obj-C
+- 2 phases, 4 plans, ~7 tasks
+- Same-day execution (2026-02-05)
+
+**Git range:** `cd2b15d` → `a656f06`
+
+**What's next:** TBD (run `/gsd:new-milestone`)
+
+---
+
 ## v1.7 Stabilization (Shipped: 2026-02-05)
 
 **Delivered:** Fixed all v1.6 async texture upload regressions

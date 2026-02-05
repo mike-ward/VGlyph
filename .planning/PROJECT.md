@@ -6,8 +6,8 @@ Text rendering library for V language using Pango for shaping and FreeType for r
 Atlas-based GPU rendering with layout caching, subpixel positioning, and rich text support.
 Includes profiling instrumentation, multi-page atlas with shelf-based allocation, LRU cache
 eviction, async texture uploads, text editing APIs (cursor, selection, mutation, undo/redo,
-VoiceOver accessibility), and CJK IME support (Japanese, Chinese; Korean has known macOS
-first-keypress bug).
+VoiceOver accessibility), CJK IME support via per-overlay API with MTKView auto-discovery
+(Japanese, Chinese fully working; Korean has known macOS first-keypress bug).
 
 ## Core Value
 
@@ -70,23 +70,16 @@ Reliable text rendering without crashes or undefined behavior.
 - Fix rendering delays (vmemcpy buffer accumulation) — v1.7
 - Fix blank scroll regions (vmemcpy buffer accumulation) — v1.7
 - Full regression verification (6/6 tests, 3/3 demos) — v1.7
+- NSWindow → MTKView discovery helper (recursive, depth-limited) — v1.8
+- Per-overlay IME API with two independent text fields — v1.8
+- Global callback API retained as fallback (`--global-ime`) — v1.8
+- SECURITY.md trust boundary for NSView hierarchy discovery — v1.8
+- Cross-platform compilation (Linux/Windows without macOS overlay) — v1.8
+- CJK IME regression pass through overlay API — v1.8
 
 ### Active
 
-- [ ] NSWindow → MTKView discovery helper (Obj-C, walk view hierarchy)
-- [ ] Switch editor_demo from global callback to per-overlay API
-- [ ] Keep global callback API as fallback for non-macOS / discovery failure
-- [ ] Update SECURITY.md to reflect overlay API limitation resolved
-
-## Current Milestone: v1.8 Overlay API Activation
-
-**Goal:** Unblock the per-overlay IME API by discovering MTKView from
-NSWindow, enabling multi-field IME support.
-
-**Target features:**
-- NSWindow → MTKView view hierarchy discovery
-- editor_demo uses overlay API instead of global callbacks
-- Global callback API retained as fallback
+(None — planning next milestone)
 
 ### Out of Scope
 - Thread safety — V is single-threaded by design
@@ -97,12 +90,14 @@ NSWindow, enabling multi-field IME support.
 
 ## Context
 
-VGlyph is a V language text rendering library. v1.0 hardened memory operations, v1.1 hardened
-fragile areas (iterators, AttrList, FreeType state, vertical coords), v1.2 added performance
-instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK IME support.
+VGlyph is a V language text rendering library. v1.0 hardened memory
+operations, v1.1 hardened fragile areas, v1.2 added performance
+instrumentation, v1.3 added text editing APIs, v1.4 added CJK IME,
+v1.5 quality audit, v1.6 performance optimization, v1.7 stabilization,
+v1.8 overlay API activation.
 
 **Current State:**
-- 14,452 LOC V/Obj-C
+- 15,010 LOC V/Obj-C
 - Tech stack: Pango, FreeType, Cairo, OpenGL, AppKit (macOS IME)
 - Profiling: `-d profile` flag for timing/cache/atlas metrics
 - Diagnostics: `-d diag` flag for async upload path tracing
@@ -112,9 +107,9 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
   Layout cache (TTL, 92.3% hit rate)
 - Editing: Cursor, selection, mutation, undo/redo, VoiceOver
   accessibility
-- IME: Japanese/Chinese fully working, Korean partial (macOS
-  first-keypress bug)
-- Shipped: v1.0-v1.7 (8 milestones, 32 phases)
+- IME: Per-overlay API via MTKView auto-discovery, global fallback,
+  Japanese/Chinese fully working, Korean partial (macOS bug)
+- Shipped: v1.0-v1.8 (9 milestones, 34 phases)
 
 ## Constraints
 
@@ -166,7 +161,14 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
 | All 3 symptoms → P27 swap | Root cause analysis with empirical validation | Good - single fix |
 | vmemcpy after buffer swap | Preserve accumulated glyph data across swaps | Good - all regressions fixed |
 | Copy all pages (not dirty-only) | Correctness over performance | Good - simple and reliable |
+| MTKView recursive discovery (depth 100) | Simple traversal, real hierarchy 2-3 deep | Good - works reliably |
+| Hard error on MTKView not found | No silent fallback per CONTEXT.md | Good - clear failure mode |
+| void* public API params | No macOS types leak to header | Good - clean cross-platform |
+| Lazy frame() overlay init | Window not ready during sokol init | Good - reliable timing |
+| Override inputContext on overlay | NSView category returns nil for all | Good - fixes category conflict |
+| interpretKeyEvents only (no handleEvent) | handleEvent consumes Korean IME events | Good - all CJK works |
+| Overlay API as primary IME path | Per-overlay enables multi-field | Good - extensible design |
 
 ---
-*Last updated: 2026-02-05 after v1.8 milestone started*
+*Last updated: 2026-02-05 after v1.8 milestone*
 *Korean first-keypress: Qt QTBUG-136128, Apple FB17460926, Alacritty #6942*

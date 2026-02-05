@@ -114,38 +114,21 @@ static void vglyph_keyDown(id self, SEL _cmd, NSEvent* event) {
         return;
     }
 
-    // During composition OR for non-navigation keys, try IME via interpretKeyEvents
-    // This is the standard NSResponder approach and may handle edge cases better
+    // During composition OR for non-navigation keys, route through IME
+    // Use interpretKeyEvents only (matching overlay approach).
+    // handleEvent consumes CJK events without calling NSTextInputClient methods.
     if (g_marked_callback) {
-        g_ime_handled_key = NO;  // Reset flag before processing
+        g_ime_handled_key = NO;
 
-        // Ensure input context exists and is active
-        // Korean IME fix: Also call discardMarkedText to clear any stale state
-        // This may help initialize Korean IME's internal state on first keypress
         NSTextInputContext* ctx = [self inputContext];
         if (ctx) {
             [ctx activate];
-            // Clear any stale marked text state - may help Korean IME initialization
-            if (!g_has_marked_text) {
-                [ctx discardMarkedText];
-            }
         }
 
-        // Korean IME fix attempt: Try handleEvent directly first
-        // Some apps report success calling handleEvent before interpretKeyEvents
-        // handleEvent may initialize Korean IME state that interpretKeyEvents doesn't
-        if ([ctx handleEvent:event]) {
-            if (g_ime_handled_key) {
-                return;  // IME handled the key via handleEvent
-            }
-        }
-
-        // Fall back to interpretKeyEvents - the standard NSResponder approach
-        // This may handle edge cases that handleEvent doesn't
         [(NSView*)self interpretKeyEvents:@[event]];
 
-        if (g_ime_handled_key) {
-            return;  // IME called setMarkedText or insertText
+        if (g_ime_handled_key || g_has_marked_text) {
+            return;
         }
     }
 

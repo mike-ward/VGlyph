@@ -131,7 +131,7 @@ pub fn post_accessibility_notification(element Id, notification string) {
 // This uses NSAccessibilityAnnouncementRequestedNotification for direct announcements.
 // On non-darwin platforms, this is a no-op.
 pub fn announce_to_voiceover(message string) {
-	$if darwin {
+	$if macos {
 		if message.len == 0 {
 			return
 		}

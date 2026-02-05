@@ -27,6 +27,15 @@ typedef struct {
     void* user_data;
 } VGlyphIMECallbacks;
 
+// Discover MTKView from NSWindow via view hierarchy walk
+// Returns MTKView pointer or NULL if not found (logs to stderr)
+void* vglyph_discover_mtkview_from_window(void* ns_window);
+
+// Create overlay via auto-discovery from NSWindow
+// Walks NSWindow view hierarchy to find MTKView, then creates overlay
+// Returns handle or NULL on failure (MTKView not found, or creation error)
+VGlyphOverlayHandle vglyph_create_ime_overlay_auto(void* ns_window);
+
 // Create overlay as sibling above MTKView
 // mtk_view: Pointer to sokol's MTKView (casted from sapp_macos_get_window())
 // Returns: Handle to overlay, or NULL on failure

@@ -10,7 +10,7 @@ See [EDITING.md](./EDITING.md) for API usage examples.
 - [Current State](#current-state)
 - [Dead Key Composition](#dead-key-composition)
 - [IME Composition State](#ime-composition-state)
-- [Future Work: CJK IME](#future-work-cjk-ime)
+- [CJK IME via Overlay API](#cjk-ime-via-overlay-api-v18)
 
 ---
 
@@ -18,17 +18,19 @@ See [EDITING.md](./EDITING.md) for API usage examples.
 
 ### What Works
 
-- **Dead key composition** for accented Latin characters (grave, acute, circumflex, tilde, umlaut,
-  cedilla)
-- **macOS NSTextInputClient bridge** implemented via NSView category
-- **Callback registration** for V integration: `ime_register_callbacks`
+- **Dead key composition** for accented Latin characters (grave, acute,
+  circumflex, tilde, umlaut, cedilla)
+- **CJK IME composition** (Japanese, Chinese, Korean) via overlay API
+- **NSWindow -> MTKView auto-discovery** for overlay creation
+- **Per-overlay callbacks** with multi-field support
+- **macOS NSTextInputClient bridge** via VGlyphIMEOverlayView
 - **Composition bounds** for candidate window positioning
 
 ### What Doesn't Work Yet
 
-- **CJK IME composition** (Japanese, Chinese, Korean input methods)
-- Root cause: NSView category doesn't connect to sokol's MTKView
-- The infrastructure exists (CompositionState, ClauseRects) but can't receive IME events
+- **Korean first-keypress** requires refocus (macOS system bug,
+  QTBUG-136128, Apple FB17460926, Alacritty #6942)
+- **Linux/Windows IME** (IBus, Fcitx, IMM32/TSF not implemented)
 
 ---
 
@@ -184,40 +186,28 @@ for cr in clause_rects {
 
 ---
 
-## Future Work: CJK IME
+## CJK IME via Overlay API (v1.8+)
 
-### Current Limitation
+### Architecture
 
-VGlyph's IME bridge uses an NSView category to add NSTextInputClient conformance. However, sokol
-uses MTKView (Metal view) which doesn't inherit the category methods. The IME system queries the
-MTKView directly, bypassing VGlyph's implementation.
+VGlyph uses overlay-based CJK IME on macOS:
 
-### Potential Solutions
-
-1. **Modify sokol** - Add NSTextInputClient conformance directly to sokol's MTKView subclass
-
-2. **Overlay view** - Create transparent NSView overlay positioned over text area that receives
-   IME events and forwards to VGlyph
-
-3. **Custom MTKView subclass** - Fork sokol or use custom view class that inherits from both
-   MTKView and conforms to NSTextInputClient
-
-### Infrastructure Ready
-
-The VGlyph code is prepared for CJK IME:
-
-- `CompositionState` tracks multi-clause preedit with style info
-- `Clause` struct stores segment boundaries and selection state
-- `ClauseRects` provides geometry for multi-segment underline rendering
-- `get_composition_bounds` returns bounds for candidate window positioning
-- Coordinate conversion handles top-left to bottom-left for macOS
+- **VGlyphIMEOverlayView** - Transparent NSView implementing NSTextInputClient
+- **Auto-discovery** - Discovers MTKView from NSWindow subview tree
+- **Per-overlay callbacks** - Each overlay has independent callback set
+- **Multi-field routing** - Single overlay supports multiple text fields via
+  field IDs
 
 ### Testing CJK IME
 
-Once the bridge is fixed, test with:
+CJK IME works on macOS (v1.8+). Test with:
+
 1. Japanese (Hiragana -> Kanji conversion with clause selection)
 2. Chinese Pinyin (tone marks, character selection)
 3. Korean (Hangul composition, jamo -> syllable)
+
+**Known issue:** Korean first-keypress requires refocus (macOS bug,
+QTBUG-136128)
 
 ### Platform Notes
 

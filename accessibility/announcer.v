@@ -240,7 +240,7 @@ fn (mut ann AccessibilityAnnouncer) should_announce() bool {
 fn (ann AccessibilityAnnouncer) log_announcement(message string) {
 	// eprintln('[VoiceOver] ${message}')  // debug
 	// Post to VoiceOver via NSAccessibility
-	$if darwin {
+	$if macos {
 		announce_to_voiceover(message)
 	}
 }

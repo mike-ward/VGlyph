@@ -51,6 +51,32 @@ complex scripts, and rich text markup—while remaining easy to use.
 - **Accessibility**: Automatic integration with macOS VoiceOver (and future
   screen readers) via a simple API switch.
 
+## 🌐 Input Method Editor (IME) Support
+
+VGlyph supports CJK IME for Japanese, Chinese, and Korean input.
+
+**macOS overlay API (v1.8+):**
+
+```v ignore
+$if darwin {
+    ns_window := C.sapp_macos_get_window()
+    ime_overlay := vglyph.ime_overlay_create_auto(ns_window)
+    vglyph.ime_overlay_register_callbacks(ime_overlay,
+        on_marked_text, on_insert_text,
+        on_do_command, on_get_rect, on_clause, user_data)
+    vglyph.ime_overlay_set_focused_field(ime_overlay, 'field_id')
+}
+```
+
+**Cross-platform global callbacks (v1.3+):**
+
+For simpler single-field apps, global callbacks work on all platforms.
+
+See [EDITING.md](docs/EDITING.md) for API details and
+[IME-APPENDIX.md](docs/IME-APPENDIX.md) for CJK IME architecture.
+
+**Known issue:** Korean first-keypress macOS bug (QTBUG-136128, FB17460926).
+
 ## 📦 Prerequisites
 
 You must have **Pango** and **FreeType** installed.
@@ -135,7 +161,7 @@ The `examples/` directory contains several demonstrations:
 
 - **`demo.v`** - Multilingual text, wrapping, and rich text markup
 - **`emoji_demo.v`** - Emoji and color bitmap rendering
-- **`editor_demo.v`** - Interactive text editing with cursor placement
+- **`editor_demo.v`** - Interactive text editing with CJK IME support
 - **`typography_demo.v`** - OpenType features and custom tab stops
 - **`variable_font_demo.v`** - Variable font animation (weight/width axes)
 - **`list_demo.v`** - Unordered and ordered lists with hanging indents

@@ -6,23 +6,22 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Reliable text rendering without crashes or undefined
 behavior
-**Current focus:** v1.8 Overlay API Activation — Phase 33
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: 33 of 34 (Overlay API Wiring)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-02-05 — v1.8 roadmap created
+Phase: 34 of 34 (all phases complete)
+Plan: N/A
+Status: Ready to plan next milestone
+Last activity: 2026-02-05 — v1.8 milestone archived
 
-Progress: 8 milestones shipped (v1.0-v1.7, 32 phases)
+Progress: 9 milestones shipped (v1.0-v1.8, 34 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total phases completed: 32 (31 executed, 1 skipped)
-- Phases per milestone avg: 4.0
-- Total milestones shipped: 8
+- Total phases completed: 34 (33 executed, 1 skipped)
+- Total milestones shipped: 9
 
 **By Milestone:**
 
@@ -36,13 +35,13 @@ Progress: 8 milestones shipped (v1.0-v1.7, 32 phases)
 | v1.5 Quality Audit | 4 | Complete |
 | v1.6 Performance v2 | 4 | Complete (P29 skipped) |
 | v1.7 Stabilization | 3 | Complete |
-| v1.8 Overlay API | 2 | In Progress |
+| v1.8 Overlay API | 2 | Complete |
 
 ## Accumulated Context
 
 ### Decisions
 
-See PROJECT.md Key Decisions table for full history (48 decisions).
+See PROJECT.md Key Decisions table for full history.
 
 ### Pending Todos
 
@@ -56,6 +55,6 @@ None.
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: v1.8 roadmap created
+Stopped at: v1.8 milestone archived
 Resume file: None
-Resume command: `/gsd:plan-phase 33`
+Resume command: `/gsd:new-milestone`

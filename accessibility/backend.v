@@ -20,7 +20,7 @@ mut:
 
 // new_accessibility_backend creates a platform-specific backend instance.
 fn new_accessibility_backend() AccessibilityBackend {
-	$if darwin {
+	$if macos {
 		return &DarwinAccessibilityBackend{}
 	} $else {
 		return &StubAccessibilityBackend{}

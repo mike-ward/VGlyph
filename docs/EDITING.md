@@ -375,8 +375,35 @@ fn on_arrow_key() {
 
 Input Method Editor support for dead keys and CJK composition.
 
-See [IME-APPENDIX.md](./IME-APPENDIX.md) for detailed IME documentation including dead key tables
-and future CJK plans.
+See [IME-APPENDIX.md](./IME-APPENDIX.md) for detailed IME documentation
+including dead key tables and CJK IME details with overlay architecture.
+
+### Overlay API (macOS, v1.8+)
+
+Overlay creates transparent NSView sibling above MTKView, receives IME events
+directly.
+
+**Overlay lifecycle:**
+
+```v ignore
+// Create overlay (discovers MTKView automatically)
+ns_window := C.sapp_macos_get_window()
+overlay := vglyph.ime_overlay_create_auto(ns_window)
+
+// Register callbacks
+vglyph.ime_overlay_register_callbacks(overlay,
+    on_marked_text_fn, on_insert_text_fn,
+    on_do_command_fn, on_get_rect_fn,
+    on_clause_fn, user_data)
+
+// Activate for a field
+vglyph.ime_overlay_set_focused_field(overlay, 'my_field')
+
+// Cleanup
+vglyph.ime_overlay_free(overlay)
+```
+
+**Note:** Falls back to global callbacks if overlay creation fails.
 
 ### Dead Keys (Working)
 

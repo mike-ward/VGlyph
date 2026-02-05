@@ -28,4 +28,16 @@ void vglyph_overlay_register_callbacks(void* handle, VGlyphIMECallbacks callback
     // No-op
 }
 
+// Discover MTKView (no-op on non-Darwin)
+void* vglyph_discover_mtkview_from_window(void* ns_window) {
+    (void)ns_window;
+    return NULL;
+}
+
+// Create overlay via auto-discovery (no-op on non-Darwin)
+void* vglyph_create_ime_overlay_auto(void* ns_window) {
+    (void)ns_window;
+    return NULL;
+}
+
 #endif // !__APPLE__

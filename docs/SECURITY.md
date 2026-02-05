@@ -106,19 +106,61 @@ Enable debug builds (`v -d debug`) for additional checks:
 | Glyph cache collision detection | Validates secondary key on cache hit |
 | FreeType state validation | Asserts on invalid outline/glyph states |
 
+## NSView Hierarchy Discovery (macOS Overlay API)
+
+### Overview
+
+The overlay API discovers MTKView by walking NSWindow's subview tree. This
+enables transparent IME overlay creation without requiring direct handle access.
+
+### Trust Boundary Diagram
+
+```
+[TRUSTED]              [BOUNDARY]            [VALIDATED]
+V application    -->   FFI call      -->     NSWindow view tree
+editor_demo.v          vglyph_discover_      Subviews checked via
+                       mtkview_from_window() isKindOfClass
+```
+
+### Implementation Safety
+
+- **NULL check** on NSWindow before access
+- **Depth limit** 100 levels to prevent infinite recursion
+- **isKindOfClass** runtime type check (not string matching)
+- **NULL return** on not found (no exceptions)
+
+### Failure Handling
+
+Returns NULL when MTKView not found. Caller falls back to global callbacks.
+No exceptions thrown. Logs discovery failure to stderr.
+
+### Security Properties
+
+- Cannot crash (all pointers validated)
+- Cannot be spoofed (runtime type checking)
+- Fails safe (returns NULL)
+- No privilege escalation possible
+
+### Known Limitations
+
+- Assumes MTKView present (sokol always creates one)
+- Does not validate subclass behavior beyond type check
+
+---
+
 ## Known Limitations
 
-1. **Korean IME first-keypress** - macOS-level bug, documented upstream. User workaround: type
-   first character twice, or refocus field.
+1. **Korean IME first-keypress** - macOS-level bug, documented upstream. User
+   workaround: type first character twice, or refocus field.
 
-2. **Font format validation** - Delegated entirely to FreeType. VGlyph validates path existence
-   but not font file contents.
+2. **Font format validation** - Delegated entirely to FreeType. VGlyph
+   validates path existence but not font file contents.
 
-3. **Thread safety** - VGlyph is designed for single-threaded use (V's default model). Context,
-   Renderer, and TextSystem are not thread-safe.
+3. **Thread safety** - VGlyph is designed for single-threaded use (V's
+   default model). Context, Renderer, and TextSystem are not thread-safe.
 
-4. **Overlay API limitation** - editor_demo uses global callback API because gg doesn't expose
-   MTKView handle. Multi-field apps need native handle access.
+4. **Overlay API macOS-only** - Overlay discovery requires NSWindow.
+   Non-macOS platforms use global callback fallback. Not a security issue.
 
 ## Security Checklist
 

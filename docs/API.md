@@ -378,6 +378,59 @@ Creates a renderer with a custom-sized glyph atlas.
 
 ---
 
+## IME Overlay API
+
+➡️ **macOS only** (`$if darwin`)
+
+Overlay API for CJK IME support via transparent NSView above MTKView.
+
+➡️ `fn ime_overlay_create_auto(ns_window voidptr) voidptr`
+
+Creates overlay by auto-discovering MTKView from NSWindow.
+
+- **Parameters**:
+    - `ns_window`: NSWindow handle from `C.sapp_macos_get_window()`.
+- **Returns**: Overlay handle or NULL on failure.
+
+➡️ `fn ime_overlay_register_callbacks(handle voidptr, on_marked_text fn,
+on_insert_text fn, on_do_command fn, on_get_rect fn, on_clause fn, user_data
+voidptr)`
+
+Registers per-overlay IME callbacks.
+
+- **Parameters**:
+    - `handle`: Overlay handle from `ime_overlay_create_auto`.
+    - `on_marked_text`: Callback for preedit text updates.
+    - `on_insert_text`: Callback for committed text insertion.
+    - `on_do_command`: Callback for IME commands (cancel, etc).
+    - `on_get_rect`: Callback to provide field bounds for candidate window.
+    - `on_clause`: Callback for clause info (multi-segment underlines).
+    - `user_data`: Arbitrary pointer passed to callbacks.
+
+➡️ `fn ime_overlay_set_focused_field(handle voidptr, field_id string)`
+
+Activates overlay for specific text field.
+
+- **Parameters**:
+    - `handle`: Overlay handle.
+    - `field_id`: Text field identifier.
+
+➡️ `fn ime_overlay_free(handle voidptr)`
+
+Destroys overlay and cancels any active composition.
+
+➡️ `fn ime_discover_mtkview(ns_window voidptr) voidptr`
+
+Low-level: discovers MTKView from NSWindow view hierarchy.
+
+- **Parameters**:
+    - `ns_window`: NSWindow handle.
+- **Returns**: MTKView handle or NULL if not found.
+
+**Note:** Non-macOS platforms provide stubs returning NULL.
+
+---
+
 ## Font Management
 
 For details on loading and using fonts, please refer to the

@@ -9,10 +9,12 @@
 @interface VGlyphIMEOverlayView : NSView <NSTextInputClient> {
     NSRange _markedRange;
     NSRange _selectedRange;
+    BOOL _didInsertText; // Set by insertText during keyDown processing
 }
 @property (weak, nonatomic) NSView* mtkView; // Weak reference to underlying MTKView
 @property (strong, nonatomic) NSString* fieldId; // Current focused field identifier
 @property (nonatomic) VGlyphIMECallbacks callbacks; // IME event callbacks
+@property (strong, nonatomic) NSTextInputContext* imeContext; // Own input context
 @end
 
 @implementation VGlyphIMEOverlayView
@@ -29,6 +31,15 @@
 
 #pragma mark - NSView Overrides
 
+// Override inputContext — the NSView category in ime_bridge_macos.m returns nil
+// when global callbacks aren't registered, which breaks per-overlay IME.
+- (NSTextInputContext*)inputContext {
+    if (!_imeContext) {
+        _imeContext = [[NSTextInputContext alloc] initWithClient:self];
+    }
+    return _imeContext;
+}
+
 - (BOOL)acceptsFirstResponder {
     // Must return YES to receive IME events
     return YES;
@@ -42,6 +53,8 @@
 #pragma mark - NSTextInputClient Required Methods (Phase 18: Stubs)
 
 - (void)insertText:(id)string replacementRange:(NSRange)replacementRange {
+    _didInsertText = YES; // Signal keyDown to stop processing
+
     // Extract text from NSString or NSAttributedString
     NSString* text = [string isKindOfClass:[NSAttributedString class]]
                      ? [(NSAttributedString*)string string]
@@ -187,33 +200,19 @@
 #pragma mark - Key Forwarding (Phase 20: Korean IME support)
 
 - (void)keyDown:(NSEvent*)event {
-    // Korean IME fix: Route ALL character input through IME, not just during composition
-    // Korean IME (unlike Japanese/Chinese) needs the IME system active from first keypress
     NSTextInputContext* ctx = [self inputContext];
     if (ctx) {
         [ctx activate];
-        // Clear stale state on first keypress (may help Korean IME initialization)
-        if (![self hasMarkedText]) {
-            [ctx discardMarkedText];
-        }
 
-        // Try handleEvent first (Korean IME may respond to this before interpretKeyEvents)
-        if ([ctx handleEvent:event]) {
-            // If IME handled it and we now have marked text, don't forward
-            if ([self hasMarkedText]) {
-                return;
-            }
-        }
-
-        // Fall back to interpretKeyEvents for other IME processing
+        _didInsertText = NO;
         [self interpretKeyEvents:@[event]];
-        if ([self hasMarkedText]) {
-            return;
+        if ([self hasMarkedText] || _didInsertText) {
+            return; // Text input system handled this key
         }
     }
 
-    // Forward to MTKView - sokol needs to see key events IME didn't consume
-    // V code has guards to ignore raw keys during composition
+    // Forward ONLY keys the text input system didn't handle
+    // (navigation, function keys, etc. — NOT regular characters)
     if (self.mtkView) {
         [self.mtkView keyDown:event];
     }
@@ -284,6 +283,68 @@
 
 @end
 
+#pragma mark - MTKView Discovery Helper
+
+// Recursive helper to find view by class name in view hierarchy
+static NSView* findViewByClass(NSView* root, NSString* className, int depth) {
+    if (!root) {
+        return nil;
+    }
+
+    // Depth limit sanity check (real hierarchy is 2-3 levels)
+    if (depth > 100) {
+        return nil;
+    }
+
+    // Check if root matches (isKindOfClass handles subclasses like _sapp_macos_view)
+    Class targetClass = NSClassFromString(className);
+    if (targetClass && [root isKindOfClass:targetClass]) {
+        return root;
+    }
+
+    // Recurse into subviews
+    for (NSView* subview in root.subviews) {
+        NSView* found = findViewByClass(subview, className, depth + 1);
+        if (found) {
+            return found;
+        }
+    }
+
+    return nil;
+}
+
+void* vglyph_discover_mtkview_from_window(void* ns_window) {
+    if (!ns_window) {
+        return NULL;
+    }
+
+    NSWindow* window = (__bridge NSWindow*)ns_window;
+    NSView* contentView = window.contentView;
+
+    if (!contentView) {
+        return NULL;
+    }
+
+    NSView* mtkView = findViewByClass(contentView, @"MTKView", 0);
+
+    if (!mtkView) {
+        fprintf(stderr, "vglyph: MTKView not found in window view hierarchy\n");
+        return NULL;
+    }
+
+    return (__bridge void*)mtkView;
+}
+
+VGlyphOverlayHandle vglyph_create_ime_overlay_auto(void* ns_window) {
+    void* mtkView = vglyph_discover_mtkview_from_window(ns_window);
+
+    if (!mtkView) {
+        return NULL; // Hard error per CONTEXT.md - no silent fallback
+    }
+
+    return vglyph_create_ime_overlay(mtkView);
+}
+
 #pragma mark - C API Implementation
 
 VGlyphOverlayHandle vglyph_create_ime_overlay(void* mtk_view) {
@@ -330,8 +391,11 @@ void vglyph_set_focused_field(VGlyphOverlayHandle handle, const char* field_id) 
 
     if (field_id != NULL) {
         // Focus: Make overlay first responder
+        // Defer to next run loop — may be called during render callback
         overlay.fieldId = [NSString stringWithUTF8String:field_id];
-        [[overlay window] makeFirstResponder:overlay];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[overlay window] makeFirstResponder:overlay];
+        });
     } else {
         // Blur: commit and clean state
         if ([overlay hasMarkedText]) {
@@ -352,6 +416,17 @@ void vglyph_overlay_free(VGlyphOverlayHandle handle) {
 
     // Transfer ownership and release
     VGlyphIMEOverlayView* overlay = (__bridge_transfer VGlyphIMEOverlayView*)handle;
+
+    // Force-cancel any active IME composition (CONTEXT.md: no cross-handler routing)
+    if ([overlay hasMarkedText]) {
+        // Discard composition without routing to global callbacks
+        [overlay unmarkText];
+    }
+    // Resign first responder if this overlay had it
+    if ([[overlay window] firstResponder] == overlay) {
+        [[overlay window] makeFirstResponder:overlay.mtkView];
+    }
+
     [overlay removeFromSuperview];
     // ARC will deallocate overlay after this scope
 }

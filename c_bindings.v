@@ -732,7 +732,7 @@ fn C.vglyph_ime_has_marked_text() bool
 // Registers callbacks that the native IME bridge will call when IME events occur.
 pub fn ime_register_callbacks(marked IMEMarkedTextCallback, insert IMEInsertTextCallback,
 	unmark IMEUnmarkTextCallback, bounds IMEBoundsCallback, user_data voidptr) {
-	$if darwin {
+	$if macos {
 		C.vglyph_ime_register_callbacks(marked, insert, unmark, bounds, user_data)
 	}
 }
@@ -750,6 +750,8 @@ pub fn ime_has_marked_text() bool {
 
 // IME Overlay API (Phase 18-19)
 // C functions implemented by ime_overlay_darwin.m (Darwin) or ime_overlay_stub.c (other)
+fn C.vglyph_discover_mtkview_from_window(ns_window voidptr) voidptr
+fn C.vglyph_create_ime_overlay_auto(ns_window voidptr) voidptr
 fn C.vglyph_create_ime_overlay(mtk_view voidptr) voidptr
 fn C.vglyph_set_focused_field(handle voidptr, field_id &char)
 fn C.vglyph_overlay_free(handle voidptr)
@@ -785,6 +787,19 @@ type IMEOverlayClausesBeginCallback = fn (user_data voidptr)
 type IMEOverlayClausesEndCallback = fn (user_data voidptr)
 
 // V wrappers for IME overlay
+
+// ime_discover_mtkview finds MTKView in NSWindow's view hierarchy.
+// Returns MTKView pointer or nil if not found.
+pub fn ime_discover_mtkview(ns_window voidptr) voidptr {
+	return C.vglyph_discover_mtkview_from_window(ns_window)
+}
+
+// ime_overlay_create_auto creates overlay by auto-discovering MTKView
+// from NSWindow. Returns overlay handle or nil on failure.
+pub fn ime_overlay_create_auto(ns_window voidptr) voidptr {
+	return C.vglyph_create_ime_overlay_auto(ns_window)
+}
+
 pub fn ime_overlay_create(mtk_view voidptr) voidptr {
 	return C.vglyph_create_ime_overlay(mtk_view)
 }
