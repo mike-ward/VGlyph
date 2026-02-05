@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-04)
 
 ## Current Position
 
-Phase: 26 of 29 (Shelf Packing) — COMPLETE
-Plan: All complete
-Status: Phase 26 verified, ready for Phase 27
-Last activity: 2026-02-05 — Phase 26 verified (17/17 must-haves)
+Phase: 27 of 29 (Async Texture Updates) — IN PROGRESS
+Plan: 1 of 1 complete
+Status: Plan 27-01 complete, phase ready for verification
+Last activity: 2026-02-05 — Completed 27-01-PLAN.md
 
 Progress: ██████████████████████████████░░░░ 26/29 phases (90%)
 
@@ -46,12 +46,12 @@ Progress: ███████████████████████�
 See PROJECT.md Key Decisions table for full history (36 decisions documented).
 
 Recent decisions affecting current work:
+- Phase 27-01: Upfront staging buffer allocation (at page creation, not lazy)
+- Phase 27-01: Preserve staging_back during grow_page (in-progress rasterization)
+- Phase 27-01: Zero both buffers in reset_page (prevents stale data)
+- Phase 27-01: Profile timing wraps entire commit() (measures CPU-side upload work)
 - Phase 26: Debug struct location (ShelfDebugInfo in api.v, keeps glyph_atlas internal)
 - Phase 26: Visualization colors (Gray outline, green fill, bright green cursor line)
-- Phase 26: Shelf waste threshold (50% of glyph height)
-- Phase 26: LRU preservation (page-level unchanged)
-- Phase 25: Test suite validation pattern established
-- Phase 24: API documentation standards
 
 ### Pending Todos
 
@@ -68,6 +68,6 @@ MTKView handle. Multi-field apps need native handle access.
 ## Session Continuity
 
 Last session: 2026-02-05
-Stopped at: Phase 26 verified and complete
-Resume file: .planning/ROADMAP.md
-Resume command: `/gsd:discuss-phase 27`
+Stopped at: Completed 27-01-PLAN.md
+Resume file: .planning/phases/27-async-texture-updates/27-01-SUMMARY.md
+Resume command: `/gsd:verify-phase 27`
