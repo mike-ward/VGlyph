@@ -8,7 +8,7 @@
 - **v1.3 Text Editing** — Phases 11-17 (shipped 2026-02-03)
 - **v1.4 CJK IME** — Phases 18-21 (shipped 2026-02-04, Korean first-keypress known issue)
 - **v1.5 Codebase Quality Audit** — Phases 22-25 (shipped 2026-02-04)
-- **v1.6 Performance Optimization** — Phases 26-29 (in progress)
+- **v1.6 Performance Optimization** — Phases 26-29 (shipped 2026-02-05, P29 skipped)
 
 ## Phases
 
@@ -83,92 +83,17 @@ See: .planning/milestones/v1.5-ROADMAP.md for full details.
 
 </details>
 
-### v1.6 Performance Optimization (In Progress)
+<details>
+<summary>v1.6 Performance Optimization (Phases 26-29) — SHIPPED 2026-02-05</summary>
 
-**Milestone Goal:** Production-ready performance with efficient atlas allocation, non-blocking
-GPU uploads, and HarfBuzz shaping optimization.
+- [x] Phase 26: Shelf Packing (2/2 plans) — completed 2026-02-05
+- [x] Phase 27: Async Texture Updates (1/1 plan) — completed 2026-02-05
+- [x] Phase 28: Profiling Validation (1/1 plan) — completed 2026-02-05
+- [ ] Phase 29: Shape Cache — SKIPPED (LayoutCache 92.3% > 70%)
 
-#### Phase 26: Shelf Packing
+See: .planning/milestones/v1.6-ROADMAP.md for full details.
 
-**Goal:** Atlas pages use shelf-based allocation with best-height-fit algorithm
-
-**Depends on:** Phase 25
-
-**Requirements:** ATLAS-01, ATLAS-02, ATLAS-03
-
-**Success Criteria** (what must be TRUE):
-  1. Atlas pages allocate glyphs using shelf best-height-fit algorithm
-  2. Atlas utilization exceeds 75% on typical text (measured via -d profile)
-  3. Page-level LRU eviction behavior preserved (no regressions)
-  4. Shelf boundaries visible in atlas_debug example output
-
-**Plans:** 2 plans
-
-Plans:
-- [x] 26-01-PLAN.md — Shelf BHF allocation algorithm
-- [x] 26-02-PLAN.md — Debug visualization
-
-#### Phase 27: Async Texture Updates
-
-**Goal:** GPU uploads overlapped with CPU rasterization via double-buffered staging
-
-**Depends on:** Phase 26
-
-**Requirements:** GPU-01, GPU-02, GPU-03
-
-**Success Criteria** (what must be TRUE):
-  1. Texture uploads use double-buffered pixel staging per atlas page
-  2. CPU rasterization overlaps with GPU upload (no blocking)
-  3. commit() → draw ordering preserved (no frame corruption)
-  4. Upload time visible in -d profile metrics
-
-**Plans:** 1 plan
-
-Plans:
-- [x] 27-01-PLAN.md — Double-buffered staging + async commit
-
-#### Phase 28: Profiling Validation
-
-**Goal:** Measure optimization impact and decide on shape cache need
-
-**Depends on:** Phase 27
-
-**Requirements:** PROF-01, PROF-02
-
-**Success Criteria** (what must be TRUE):
-  1. LayoutCache hit rate tracked in -d profile output
-  2. Atlas utilization improvements measured (shelf vs old row-based)
-  3. Upload time improvements measured (async vs old sync)
-  4. Decision made on SHAPE-01 based on LayoutCache hit rate threshold
-
-**Plans:** 1 plan
-
-Plans:
-- [x] 28-01-PLAN.md — Stress test, profiling, P29 decision (completed 2026-02-05)
-
-#### Phase 29: Shape Cache (SKIPPED)
-
-**Status:** Skipped based on Phase 28 profiling data
-
-**Decision rationale:**
-- LayoutCache hit rate: 92.3% (well above 70% threshold)
-- Only 7.7% of lookups require HarfBuzz reshaping
-- Layout time negligible (2 us per frame, 3.6% of total)
-- Shape cache would optimize <8% of already-fast operation
-- Complexity not justified for ~1.8 us per frame improvement
-
-See: .planning/phases/28-profiling-validation/28-VERIFICATION.md
-
-~~**Goal:** HarfBuzz shape plan caching if LayoutCache hit rate below 70%~~
-
-~~**Requirements:** SHAPE-01~~
-  3. If executed: Shape cache hit rate visible in -d profile metrics
-  4. If skipped: SHAPE-01 deferred to future milestone with rationale documented
-
-**Plans:** TBD
-
-Plans:
-- [ ] 29-01: TBD (conditional on profiling results)
+</details>
 
 ## Progress
 
@@ -205,4 +130,4 @@ Plans:
 | 29. Shape Cache | v1.6 | N/A | Skipped | 2026-02-05 |
 
 ---
-*Last updated: 2026-02-05 — Phase 28 complete, Phase 29 skipped (LayoutCache 92.3%)*
+*Last updated: 2026-02-05 — v1.6 milestone complete, archived*

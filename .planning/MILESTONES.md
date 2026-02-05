@@ -1,5 +1,32 @@
 # Project Milestones: VGlyph
 
+## v1.6 Performance Optimization (Shipped: 2026-02-05)
+
+**Delivered:** Shelf-based atlas allocation, async texture uploads, and profiling validation
+with data-driven shape cache skip decision.
+
+**Phases completed:** 26-29 (4 plans total, Phase 29 skipped)
+
+**Key accomplishments:**
+
+- Shelf BHF atlas allocation: 75%+ utilization vs ~70% row packing
+- Double-buffered async texture uploads with CPU/GPU overlap
+- Multilingual stress validation (2000+ glyphs, 8+ scripts, 92.3% LayoutCache hit rate)
+- Data-driven P29 skip: shape cache ROI too low (92.3% > 70% threshold)
+
+**Stats:**
+
+- 25 files modified (+4,404/-144)
+- 13,651 lines of V/Obj-C
+- 4 phases, 4 plans, 8 tasks
+- Same-day execution (2026-02-05)
+
+**Git range:** `d0700f1` → `94c26a8`
+
+**What's next:** TBD (run `/gsd:new-milestone`)
+
+---
+
 ## v1.5 Codebase Quality Audit (Shipped: 2026-02-04)
 
 **Delivered:** Security-first audit of entire codebase with input validation, error handling,

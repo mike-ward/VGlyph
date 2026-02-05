@@ -4,9 +4,10 @@
 
 Text rendering library for V language using Pango for shaping and FreeType for rasterization.
 Atlas-based GPU rendering with layout caching, subpixel positioning, and rich text support.
-Includes profiling instrumentation, multi-page atlas, LRU cache eviction, text editing APIs
-(cursor, selection, mutation, undo/redo, VoiceOver accessibility), and CJK IME support
-(Japanese, Chinese; Korean has known macOS first-keypress bug).
+Includes profiling instrumentation, multi-page atlas with shelf-based allocation, LRU cache
+eviction, async texture uploads, text editing APIs (cursor, selection, mutation, undo/redo,
+VoiceOver accessibility), and CJK IME support (Japanese, Chinese; Korean has known macOS
+first-keypress bug).
 
 ## Core Value
 
@@ -61,23 +62,21 @@ Reliable text rendering without crashes or undefined behavior.
 - Code consistency: formatting, naming, error handling — v1.5
 - Documentation: API docs, README, example headers — v1.5
 - Verification: all tests pass, examples compile — v1.5
+- Shelf BHF atlas allocation (75%+ utilization) — v1.6
+- Double-buffered async texture uploads (CPU/GPU overlap) — v1.6
+- Profiling validation (92.3% LayoutCache hit rate) — v1.6
+- Shape cache skip decision (data-driven, ROI too low) — v1.6
 
 ### Active
 
-**Current Milestone: v1.6 Performance Optimization**
-
-**Goal:** Production-ready performance with efficient atlas allocation, non-blocking GPU uploads,
-and HarfBuzz shaping optimization.
-
-**Target features:**
-- Shelf packing allocator — efficient bin allocation for atlas, less wasted space
-- Async texture updates — non-blocking GPU uploads during glyph rasterization
-- Shape plan caching — HarfBuzz optimization for repeated text
+(None — run `/gsd:new-milestone` for next milestone)
 
 ### Out of Scope
 - Thread safety — V is single-threaded by design
 - SDF rendering — quality feature, not performance
 - Pre-rendered atlases — app size bloat
+- Runtime defragmentation — causes frame stalls
+- HarfBuzz shape caching — LayoutCache 92.3%, ROI too low (v1.6 data)
 
 ## Context
 
@@ -86,13 +85,15 @@ fragile areas (iterators, AttrList, FreeType state, vertical coords), v1.2 added
 instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK IME support.
 
 **Current State:**
-- 13,984 LOC V/Obj-C
+- 13,651 LOC V/Obj-C
 - Tech stack: Pango, FreeType, Cairo, OpenGL, AppKit (macOS IME)
 - Profiling: `-d profile` flag for timing/cache/atlas metrics
-- Atlas: Multi-page (4 max), LRU page eviction
-- Caches: Glyph cache (4096 LRU), Metrics cache (256 LRU), Layout cache (TTL)
+- Atlas: Multi-page (4 max), shelf BHF allocation, LRU page eviction
+- Uploads: Double-buffered async staging (CPU/GPU overlap)
+- Caches: Glyph cache (4096 LRU), Metrics cache (256 LRU), Layout cache (TTL, 92.3% hit rate)
 - Editing: Cursor, selection, mutation, undo/redo, VoiceOver accessibility
 - IME: Japanese/Chinese fully working, Korean partial (macOS first-keypress bug)
+- Shipped: v1.0-v1.6 (7 milestones, 28 phases)
 
 ## Constraints
 
@@ -133,7 +134,14 @@ instrumentation and optimizations, v1.3 added text editing APIs, v1.4 added CJK 
 | Per-overlay callbacks | Multiple text field support | Good - extensible design |
 | Block undo during composition | Prevent state corruption | Good - matches other editors |
 | Korean first-keypress workarounds | macOS-level bug | Partial - upstream issue |
+| Shelf BHF with 50% waste threshold | Balances utilization vs fragmentation | Good - 75%+ utilization |
+| Page-level LRU preserved with shelves | Shelf packing orthogonal to eviction | Good - no regression |
+| Debug structs in api.v | Public API types separate from core | Good - clean separation |
+| Upfront staging buffer allocation | Simpler lifecycle, no mid-frame stalls | Good - predictable perf |
+| Preserve staging_back during grow | In-progress rasterization safe | Good - no data loss |
+| Zero both buffers on reset | Prevents stale data artifacts | Good - clean reuse |
+| Skip P29 shape cache | 92.3% LayoutCache hit rate, ROI too low | Good - data-driven |
 
 ---
-*Last updated: 2026-02-04 after v1.6 milestone started*
+*Last updated: 2026-02-05 after v1.6 milestone*
 *Korean first-keypress: Qt QTBUG-136128, Apple FB17460926, Alacritty #6942*
