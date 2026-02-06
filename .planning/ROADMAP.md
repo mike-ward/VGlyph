@@ -43,8 +43,17 @@ Refactor manual memory management of Pango pointers into V structs with RAII-lik
 
 ### Phase 40: IME API Refinement and Encapsulation
 **Goal:** Move repetitive IME callback logic into 'api.v' to improve consistency and reduce boilerplate.
-**Status:** [Planned]
+**Status:** [In Progress]
 **Plans:**
-- [ ] 40-01-PLAN.md — Refactor TextSystem for IME state management
-- [ ] 40-02-PLAN.md — Provide StandardIMEHandler and callbacks in api.v
+- [x] 40-01-PLAN.md — Refactor TextSystem for IME state management
+- [x] 40-02-PLAN.md — Provide StandardIMEHandler and callbacks in api.v
 - [ ] 40-03-PLAN.md — Update editor_demo.v to use refined API
+
+### Phase 41: Linux Accessibility
+**Goal:** Replace the no-op stub accessibility backend on Linux with a working AT-SPI backend, enabling Orca and other screen readers to interact with VGlyph applications.
+
+#### Phase 41-01: Linux AT-SPI Accessibility Backend
+**Goal:** Implement ATK + at-spi2-atk bridge backend following the same C helpers + V backend pattern as macOS.
+**Status:** [Complete]
+**Plans:**
+- [x] 41-01-PLAN.md — Linux AT-SPI Accessibility Backend

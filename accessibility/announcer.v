@@ -242,5 +242,9 @@ fn (ann AccessibilityAnnouncer) log_announcement(message string) {
 	// Post to VoiceOver via NSAccessibility
 	$if macos {
 		announce_to_voiceover(message)
+	} $else $if linux {
+		$if $pkgconfig('atk') {
+			C.vglyph_atspi_announce(message.str)
+		}
 	}
 }

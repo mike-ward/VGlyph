@@ -22,6 +22,8 @@ mut:
 fn new_accessibility_backend() AccessibilityBackend {
 	$if macos {
 		return &DarwinAccessibilityBackend{}
+	} $else $if linux {
+		return &LinuxAccessibilityBackend{}
 	} $else {
 		return &StubAccessibilityBackend{}
 	}
