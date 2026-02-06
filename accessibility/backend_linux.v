@@ -136,3 +136,9 @@ fn (mut b LinuxAccessibilityBackend) update_text_field(node_id int, value string
 		C.vglyph_atspi_flush()
 	}
 }
+
+fn (mut b LinuxAccessibilityBackend) flush() {
+	$if $pkgconfig('atk') {
+		C.vglyph_atspi_flush()
+	}
+}

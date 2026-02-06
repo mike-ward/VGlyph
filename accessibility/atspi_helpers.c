@@ -16,8 +16,9 @@ static void vglyph_accessible_component_init(AtkComponentIface *iface);
 
 /* ── Globals ───────────────────────────────────────────────────── */
 
-static AtkObject *vglyph_root = NULL;
-static gboolean   vglyph_atspi_initialized = FALSE;
+static VGlyphAccessible *vglyph_app_root = NULL;  /* ATK_ROLE_APPLICATION */
+static AtkObject        *vglyph_root     = NULL;  /* Points to app_root  */
+static gboolean          vglyph_atspi_initialized = FALSE;
 
 /* ── Role mapping (VGlyph enum ordinal → ATK) ──────────────────── */
 
@@ -199,11 +200,20 @@ void vglyph_atspi_init(void) {
     /* Ensure the VGlyphAccessible type is registered. */
     g_type_ensure(VGLYPH_TYPE_ACCESSIBLE);
 
+    /* Create the application-level root object.
+     * AT-SPI expects get_root() to return an ATK_ROLE_APPLICATION object;
+     * the tree from the manager is attached as its child. */
+    vglyph_app_root = g_object_new(VGLYPH_TYPE_ACCESSIBLE, NULL);
+    vglyph_app_root->name = g_strdup("VGlyph");
+    vglyph_app_root->role = ATK_ROLE_APPLICATION;
+    vglyph_root = ATK_OBJECT(vglyph_app_root);
+
     /* Override AtkUtil.get_root so atk-bridge publishes our tree. */
     AtkUtilClass *util_class = ATK_UTIL_CLASS(g_type_class_ref(ATK_TYPE_UTIL));
     util_class->get_root = vglyph_get_root;
 
-    /* Start the atk-bridge — this connects to the AT-SPI bus. */
+    /* Start the atk-bridge — this connects to the AT-SPI bus.
+     * The root is already set, so the bridge will find it immediately. */
     atk_bridge_adaptor_init(NULL, NULL);
 }
 
@@ -296,33 +306,38 @@ void vglyph_accessible_set_cursor_pos(VGlyphAccessible *obj, gint pos) {
 /* ── Root / announce ───────────────────────────────────────────── */
 
 void vglyph_atspi_set_root(AtkObject *root) {
-    vglyph_root = root;
+    if (!vglyph_app_root || !root)
+        return;
+
+    /* Attach the tree root as the sole child of the application object.
+     * Also set its parent pointer back to the app root. */
+    g_ptr_array_set_size(vglyph_app_root->children, 0);
+    g_object_ref(root);
+    g_ptr_array_add(vglyph_app_root->children, root);
+
+    if (VGLYPH_TYPE_ACCESSIBLE == G_OBJECT_TYPE(root))
+        VGLYPH_ACCESSIBLE(root)->parent_obj = ATK_OBJECT(vglyph_app_root);
 }
 
 void vglyph_atspi_announce(const gchar *message) {
-    if (!message || message[0] == '\0')
+    if (!message || message[0] == '\0' || !vglyph_app_root)
         return;
 
     /*
-     * Emit an ATK "announcement" by notifying a name-change on the root.
+     * Emit an ATK "announcement" by notifying a name-change on the app root.
      * Screen readers such as Orca pick up object:property-change:accessible-name
-     * events from the root object and will speak the new name.
+     * events and will speak the new name.
      *
-     * For a true live-region announcement we temporarily set the root name
-     * to the message, emit the signal, then restore it.
+     * Temporarily set the app root name to the message, emit the signal,
+     * then restore it.
      */
-    if (vglyph_root) {
-        const gchar *old_name = VGLYPH_ACCESSIBLE(vglyph_root)->name;
-        gchar *saved = old_name ? g_strdup(old_name) : NULL;
+    gchar *saved = vglyph_app_root->name;
+    vglyph_app_root->name = g_strdup(message);
 
-        g_free(VGLYPH_ACCESSIBLE(vglyph_root)->name);
-        VGLYPH_ACCESSIBLE(vglyph_root)->name = g_strdup(message);
+    g_object_notify(G_OBJECT(vglyph_app_root), "accessible-name");
+    g_signal_emit_by_name(vglyph_app_root, "visible-data-changed");
 
-        g_object_notify(G_OBJECT(vglyph_root), "accessible-name");
-        g_signal_emit_by_name(vglyph_root, "visible-data-changed");
-
-        /* Restore original name. */
-        g_free(VGLYPH_ACCESSIBLE(vglyph_root)->name);
-        VGLYPH_ACCESSIBLE(vglyph_root)->name = saved;
-    }
+    /* Restore original name. */
+    g_free(vglyph_app_root->name);
+    vglyph_app_root->name = saved;
 }

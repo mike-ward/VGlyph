@@ -16,6 +16,11 @@ mut:
 
 	// update_text_field updates text field attributes (for VoiceOver text tracking).
 	update_text_field(node_id int, value string, selected_range Range, cursor_line int)
+
+	// flush processes pending platform accessibility events.
+	// Must be called every frame on platforms where the accessibility bus
+	// requires explicit event-loop pumping (e.g. AT-SPI on Linux).
+	flush()
 }
 
 // new_accessibility_backend creates a platform-specific backend instance.

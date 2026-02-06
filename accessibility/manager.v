@@ -84,6 +84,13 @@ pub fn (mut am AccessibilityManager) post_notification(node_id int,
 	am.backend.post_notification(node_id, notification)
 }
 
+// flush processes pending platform accessibility events.
+// Call this every frame to keep the AT-SPI bus responsive on Linux.
+// No-op on macOS and other platforms.
+pub fn (mut am AccessibilityManager) flush() {
+	am.backend.flush()
+}
+
 // commit pushes accumulated accessibility updates to the platform backend.
 pub fn (mut am AccessibilityManager) commit() {
 	if am.nodes.len == 0 {

@@ -294,6 +294,7 @@ fn init(state_ptr voidptr) {
 		width:  600
 		height: 500
 	})
+	state.a11y_manager.commit()
 	state.a11y_enabled = true
 }
 
@@ -1337,4 +1338,9 @@ fn frame(state_ptr voidptr) {
 
 	state.gg_ctx.end()
 	state.ts.commit()
+
+	// Pump platform accessibility events (AT-SPI D-Bus on Linux)
+	if state.a11y_enabled {
+		state.a11y_manager.flush()
+	}
 }

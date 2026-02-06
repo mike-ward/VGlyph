@@ -185,6 +185,11 @@ fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value strin
 	}
 }
 
+fn (mut b DarwinAccessibilityBackend) flush() {
+	// macOS accessibility uses NSAccessibility which is driven by the
+	// Cocoa run loop — no explicit flushing needed.
+}
+
 // Helpers
 fn get_window_frame(window Id) C.NSRect {
 	return C.v_msgSend_nsrect(window, sel_register_name('frame'))
