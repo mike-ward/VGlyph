@@ -15,9 +15,9 @@ Plan: 02 of 03
 
 Status: In progress
 
-Last activity: 2026-02-06 — Completed 40-01-PLAN.md (Refactored TextSystem for IME state)
+Last activity: 2026-02-06 — Completed 40-02-PLAN.md (Provided StandardIMEHandler and callbacks in api.v)
 
-Progress: ██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████░░░ 96%
+Progress: ████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████░ 98%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ See PROJECT.md Key Decisions table for full history.
 - **[2026-02-06] unified-coordinate-flip**: Standardized the top-left to bottom-left Y-flip logic and documentation across all native macOS IME bridges.
 - **[2026-02-06] defensive-ime-callbacks**: Added nil checks for incoming IME strings and bounds validation for cursor positions to prevent crashes from malformed OS events.
 - **[2026-02-06] textsystem-ime-ownership**: Moved CompositionState and DeadKeyState into TextSystem to centralize IME state management.
+- **[2026-02-06] standard-ime-handler**: Provided StandardIMEHandler in api.v to encapsulate repetitive IME callback logic and boilerplate.
 
 ### Pending Todos
 
@@ -72,5 +73,5 @@ None.
 
 Last session: 2026-02-06
 
-Stopped at: Completed 40-01-PLAN.md
-Resume file: .planning/phases/40-ime-refinement/40-02-PLAN.md
+Stopped at: Completed 40-02-PLAN.md
+Resume file: .planning/phases/40-ime-refinement/40-03-PLAN.md
