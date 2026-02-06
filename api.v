@@ -22,6 +22,8 @@ mut:
 	eviction_age          i64 = 5000 // ms
 	am                    &accessibility.AccessibilityManager
 	accessibility_enabled bool
+	// Performance optimizations
+	font_hash_cache map[string]u64
 	// Profile fields - only accessed when -d profile is used
 	layout_cache_hits   int
 	layout_cache_misses int
@@ -43,6 +45,7 @@ pub fn new_text_system(mut gg_ctx gg.Context) !&TextSystem {
 		ctx:                   tr_ctx
 		renderer:              renderer
 		cache:                 map[u64]&CachedLayout{}
+		font_hash_cache:       map[string]u64{}
 		am:                    accessibility.new_accessibility_manager()
 		accessibility_enabled: false
 	}
@@ -63,10 +66,11 @@ pub fn new_text_system_atlas_size(mut gg_ctx gg.Context, atlas_width int,
 	tr_ctx := new_context(scale)!
 	renderer := new_renderer_atlas_size(mut gg_ctx, atlas_width, atlas_height, scale)
 	return &TextSystem{
-		ctx:      tr_ctx
-		renderer: renderer
-		cache:    map[u64]&CachedLayout{}
-		am:       accessibility.new_accessibility_manager()
+		ctx:             tr_ctx
+		renderer:        renderer
+		cache:           map[u64]&CachedLayout{}
+		font_hash_cache: map[string]u64{}
+		am:              accessibility.new_accessibility_manager()
 	}
 }
 
@@ -424,15 +428,11 @@ fn fnv_hash_f32(h u64, v f32) u64 {
 // fnv_hash_color hashes a gg.Color into an existing hash
 @[inline]
 fn fnv_hash_color(h u64, c gg.Color) u64 {
-	mut hash := h
-	hash = fnv_hash_u64(hash, u64(c.r))
-	hash = fnv_hash_u64(hash, u64(c.g))
-	hash = fnv_hash_u64(hash, u64(c.b))
-	hash = fnv_hash_u64(hash, u64(c.a))
-	return hash
+	color_u32 := u32(c.r) | (u32(c.g) << 8) | (u32(c.b) << 16) | (u32(c.a) << 24)
+	return fnv_hash_u64(h, u64(color_u32))
 }
 
-fn (ts &TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
+fn (mut ts TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 	mut hash := fnv_offset_basis
 
 	// Hash text
@@ -443,17 +443,31 @@ fn (ts &TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 
 	// Hash TextStyle
 	hash = fnv_hash_string(hash, cfg.style.font_name)
-	hash = fnv_hash_u64(hash, u64(cfg.style.typeface))
+
 	hash = fnv_hash_f32(hash, cfg.style.size)
 	hash = fnv_hash_color(hash, cfg.style.color)
 	hash = fnv_hash_color(hash, cfg.style.bg_color)
 
+	// Pack scalar fields to reduce FNV calls:
+	// typeface (4 bits), underline (1), strikethrough (1), align (4), wrap (4),
+	// use_markup (1), no_hit_testing (1), orientation (4)
+	mut packed := u64(cfg.style.typeface)
 	if cfg.style.underline {
-		hash = fnv_hash_u64(hash, 1)
+		packed |= u64(1) << 4
 	}
 	if cfg.style.strikethrough {
-		hash = fnv_hash_u64(hash, 2)
+		packed |= u64(1) << 5
 	}
+	packed |= u64(cfg.block.align) << 6
+	packed |= u64(cfg.block.wrap) << 10
+	if cfg.use_markup {
+		packed |= u64(1) << 14
+	}
+	if cfg.no_hit_testing {
+		packed |= u64(1) << 15
+	}
+	packed |= u64(cfg.orientation) << 16
+	hash = fnv_hash_u64(hash, packed)
 
 	// Features
 	if cfg.style.features != unsafe { nil } {
@@ -475,22 +489,12 @@ fn (ts &TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 		hash = fnv_hash_f32(hash, cfg.style.object.offset)
 	}
 
-	// Hash BlockStyle
+	// Hash remaining BlockStyle
 	hash = fnv_hash_f32(hash, cfg.block.width)
 	hash = fnv_hash_f32(hash, cfg.block.indent)
-	hash = fnv_hash_u64(hash, u64(cfg.block.align))
-	hash = fnv_hash_u64(hash, u64(cfg.block.wrap))
 
 	for t in cfg.block.tabs {
 		hash = fnv_hash_u64(hash, u64(t))
-	}
-
-	if cfg.use_markup {
-		hash = fnv_hash_u64(hash, 4)
-	}
-
-	if cfg.no_hit_testing {
-		hash = fnv_hash_u64(hash, 8)
 	}
 
 	return hash

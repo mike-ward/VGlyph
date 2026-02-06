@@ -62,11 +62,11 @@ $if profile ? {
 		draw_time_ns      i64
 
 		// Cache statistics (INST-03)
-		glyph_cache_hits      int
-		glyph_cache_misses    int
-		glyph_cache_evictions int
-		layout_cache_hits     int
-		layout_cache_misses   int
+		glyph_cache_hits       int
+		glyph_cache_misses     int
+		glyph_cache_evictions  int
+		layout_cache_hits      int
+		layout_cache_misses    int
 		layout_cache_evictions int
 		layout_cache_size      int
 		// Note: metrics_cache_hits/misses added in Phase 9 when metrics cache implemented
