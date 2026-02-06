@@ -132,16 +132,33 @@ fn (mut b DarwinAccessibilityBackend) create_element(role AccessibilityRole) Id 
 }
 
 fn (mut b DarwinAccessibilityBackend) set_focus(node_id int) {
-	// TODO
+	unsafe {
+		if node_id !in b.elements {
+			return
+		}
+		elem := b.elements[node_id]
+
+		// Set focused property on the element
+		C.v_msgSend(elem, sel_register_name('setAccessibilityFocused:'), voidptr(1))
+
+		// Notify the system that focus has changed
+		post_accessibility_notification(elem, 'NSAccessibilityFocusedUIElementChangedNotification')
+	}
 }
 
 fn (mut b DarwinAccessibilityBackend) post_notification(node_id int,
 	notification AccessibilityNotification) {
-	// TODO: NSAccessibility notifications require element attached to window
-	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
-	// Full NSAccessibility integration deferred to future work
-	_ = node_id
-	_ = notification
+	unsafe {
+		if node_id !in b.elements {
+			return
+		}
+		elem := b.elements[node_id]
+		name := match notification {
+			.value_changed { 'NSAccessibilityValueChangedNotification' }
+			.selected_text_changed { 'NSAccessibilitySelectedTextChangedNotification' }
+		}
+		post_accessibility_notification(elem, name)
+	}
 }
 
 fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value string,
