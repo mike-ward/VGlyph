@@ -146,13 +146,26 @@ fn (mut b DarwinAccessibilityBackend) post_notification(node_id int,
 
 fn (mut b DarwinAccessibilityBackend) update_text_field(node_id int, value string,
 	selected_range Range, cursor_line int) {
-	// TODO: NSAccessibility element integration requires window attachment
-	// For now, announcements via AccessibilityAnnouncer provide VoiceOver feedback
-	// Full NSAccessibility integration deferred to future work
-	_ = node_id
-	_ = value
-	_ = selected_range
-	_ = cursor_line
+	unsafe {
+		if node_id !in b.elements {
+			return
+		}
+		elem := b.elements[node_id]
+
+		// Set Value
+		value_ns := ns_string(value)
+		C.v_msgSend_void_id(elem, sel_register_name('setAccessibilityValue:'), value_ns)
+
+		// Set Selection
+		ns_range := make_ns_range(selected_range.location, selected_range.length)
+		val_range := ns_value_with_range(ns_range)
+		C.v_msgSend_void_id(elem, sel_register_name('setAccessibilitySelectedTextRange:'),
+			val_range)
+
+		// Set Number of Characters
+		C.v_msgSend_void_id(elem, sel_register_name('setAccessibilityNumberOfCharacters:'),
+			voidptr(usize(value.len)))
+	}
 }
 
 // Helpers
