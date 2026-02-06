@@ -4,18 +4,17 @@
 
 See: .planning/PROJECT.md (updated 2026-02-05)
 
-**Core value:** Reliable text rendering without crashes or undefined
-behavior
+**Core value:** Reliable text rendering without crashes or undefined behavior
 **Current focus:** Integration testing and stabilization
 
 ## Current Position
 
-Phase: 36
-Plan: 02
-Status: Phase complete
-Last activity: 2026-02-05 — Completed 36-02-PLAN.md
+Phase: 37 of 37 (Layout Cache Optimization)
+Plan: 01 of 02
+Status: In progress
+Last activity: 2026-02-06 — Completed 37-01-PLAN.md
 
-Progress: ██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████ 100%
+Progress: ███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████ 98%
 
 ## Performance Metrics
 
@@ -37,7 +36,8 @@ Progress: ███████████████████████�
 | v1.7 Stabilization | 3 | Complete |
 | v1.8 Overlay API | 2 | Complete |
 | Pango RAII Refactor | 1 | Complete |
-| Integration Testing | 1 | In Progress |
+| Integration Testing | 1 | Complete |
+| Layout Cache Optimization | 1 | In Progress |
 
 ## Accumulated Context
 
@@ -46,6 +46,7 @@ Progress: ███████████████████████�
 See PROJECT.md Key Decisions table for full history.
 - **[2026-02-05] use-real-pango-in-tests**: Confirmed real Pango/FreeType backend works in headless test environment.
 - **[2026-02-05] use-real-context-in-api-tests**: Replaced unsafe { nil } mocks with real Context in _api_test.v.
+- **[2026-02-06] layout-cache-metrics**: Used layout_cache_size and layout_cache_evictions for consistency with glyph cache metrics.
 
 ### Pending Todos
 
@@ -53,15 +54,10 @@ None.
 
 ### Known Issues
 
-**Korean IME first-keypress** - macOS-level bug, reported upstream
-(Qt QTBUG-136128, Apple FB17460926, Alacritty #6942).
+**Korean IME first-keypress** - macOS-level bug, reported upstream (Qt QTBUG-136128, Apple FB17460926, Alacritty #6942).
 
 ## Session Continuity
 
-
-
-Last session: 2026-02-05
-
-Stopped at: Completed 36-02-PLAN.md
-
+Last session: 2026-02-06
+Stopped at: Completed 37-01-PLAN.md
 Resume file: None
