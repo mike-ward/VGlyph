@@ -53,14 +53,12 @@
 - Safe modification: Changes to bindings must match the specific version of the C library headers.
 - Test coverage: Integration tests run in CI, but local setup can be brittle.
 
-## Test Coverage Gaps
+## Resolved Concerns
 
-**Integration Testing:**
-- What's not tested: Real interactions with Pango/Cairo backend in unit tests. `_api_test.v` uses
-  `unsafe { nil }` mocks.
-- Files: `_api_test.v`
-- Risk: Bugs in the C-binding layer might not be caught until runtime.
-- Priority: High.
+**Integration Testing (Resolved 2026-02-05):**
+- Issue: Unit tests relied on `unsafe { nil }` mocks instead of real Pango/Cairo backend.
+- Resolution: Implemented `_integration_test.v` using real `Context` and refactored `_api_test.v`
+  to use real backend interactions.
 
 ---
 
