@@ -6,21 +6,21 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 **Core value:** Reliable text rendering without crashes or undefined
 behavior
-**Current focus:** Refactoring Pango memory management
+**Current focus:** Integration testing and stabilization
 
 ## Current Position
 
-Phase: 35
-Plan: 02
+Phase: 36
+Plan: 01
 Status: In progress
-Last activity: 2026-02-05 — Completed 35-01-PLAN.md
+Last activity: 2026-02-05 — Completed 36-01-PLAN.md
 
 Progress: ████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████░░ 95%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total phases completed: 34 (33 executed, 1 skipped)
+- Total phases completed: 35 (34 executed, 1 skipped)
 - Total milestones shipped: 9
 
 **By Milestone:**
@@ -36,13 +36,15 @@ Progress: ███████████████████████�
 | v1.6 Performance v2 | 4 | Complete (P29 skipped) |
 | v1.7 Stabilization | 3 | Complete |
 | v1.8 Overlay API | 2 | Complete |
-| Pango RAII Refactor | 1 | In Progress |
+| Pango RAII Refactor | 1 | Complete |
+| Integration Testing | 1 | In Progress |
 
 ## Accumulated Context
 
 ### Decisions
 
 See PROJECT.md Key Decisions table for full history.
+- **[2026-02-05] use-real-pango-in-tests**: Confirmed real Pango/FreeType backend works in headless test environment.
 
 ### Pending Todos
 
@@ -55,12 +57,6 @@ None.
 
 ## Session Continuity
 
-
-
 Last session: 2026-02-05
-
-Stopped at: Completed 35-01-PLAN.md
-
-Resume file: .planning/phases/35-pango-ownership/35-02-PLAN.md
-
-Resume command: `/gsd:execute-plan 35 02`
+Stopped at: Completed 36-01-PLAN.md
+Resume file: .planning/phases/36-integration-testing/36-02-PLAN.md
