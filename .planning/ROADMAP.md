@@ -5,16 +5,23 @@ Refactor manual memory management of Pango pointers into V structs with RAII-lik
 
 ### Phase 35: Pango Ownership
 **Goal:** Implement Pango wrappers and refactor codebase to use them for safer memory management.
-**Status:** [In Progress]
+**Status:** [Complete]
 **Plans:**
-- [ ] 35-01-PLAN.md — Core Pango wrappers
-- [ ] 35-02-PLAN.md — Refactor Context and Attributes
-- [ ] 35-03-PLAN.md — Refactor Layout and Pango Integration
-- [ ] 35-04-PLAN.md — Final cleanup and verification
+- [x] 35-01-PLAN.md — Core Pango wrappers
+- [x] 35-02-PLAN.md — Refactor Context and Attributes
+- [x] 35-03-PLAN.md — Refactor Layout and Pango Integration
+- [x] 35-04-PLAN.md — Final cleanup and verification
 
 ### Phase 36: Integration Testing
 **Goal:** Replace 'unsafe { nil }' mocks in unit tests with real Pango/Cairo backend interactions to ensure C-binding and layout logic integrity.
+**Status:** [Complete]
+**Plans:**
+- [x] 36-01-PLAN.md — Integration Test Infrastructure
+- [x] 36-02-PLAN.md — API Test Refactor
+
+### Phase 37: Layout Cache Optimization
+**Goal:** Optimize `get_cache_key` and improve telemetry for layout cache.
 **Status:** [Planned]
 **Plans:**
-- [ ] 36-01-PLAN.md — Integration Test Infrastructure
-- [ ] 36-02-PLAN.md — API Test Refactor
+- [ ] 37-01-PLAN.md — Layout Cache Telemetry
+- [ ] 37-02-PLAN.md — Layout Cache Optimization
