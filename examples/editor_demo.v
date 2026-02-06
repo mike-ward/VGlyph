@@ -53,9 +53,10 @@ mut:
 	// Undo/redo support
 	undo_mgr vglyph.UndoManager
 
-	// IME composition state
-	composition vglyph.CompositionState
-	dead_key    vglyph.DeadKeyState
+	// IME handlers
+	handler1 &vglyph.StandardIMEHandler = unsafe { nil }
+	handler2 &vglyph.StandardIMEHandler = unsafe { nil }
+
 	ime_overlay voidptr = unsafe { nil } // IME overlay handle
 
 	// Second text field (multi-field demo)
@@ -115,6 +116,102 @@ fn main() {
 	state.gg_ctx.run()
 }
 
+// IME Callback Helpers for StandardIMEHandler
+fn on_commit1(text string, data voidptr) {
+	mut state := unsafe { &EditorState(data) }
+	cursor_before := state.cursor_idx
+	anchor_before := state.anchor_idx
+	mut result := vglyph.MutationResult{}
+	if state.has_selection {
+		result = vglyph.insert_replacing_selection(state.text, state.cursor_idx, state.anchor_idx,
+			text)
+	} else {
+		result = vglyph.insert_text(state.text, state.cursor_idx, text)
+	}
+	new_layout := state.ts.layout_text(result.new_text, state.cfg) or { return }
+	mut new_cursor := result.cursor_pos
+	if new_cursor < 0 {
+		new_cursor = 0
+	}
+	if new_cursor > result.new_text.len {
+		new_cursor = result.new_text.len
+	}
+	state.text = result.new_text
+	state.layout = new_layout
+	state.cursor_idx = new_cursor
+	state.anchor_idx = new_cursor
+	state.has_selection = false
+	state.undo_mgr.record_mutation(result, text, cursor_before, anchor_before)
+}
+
+fn on_update1(data voidptr) {
+	mut state := unsafe { &EditorState(data) }
+	if state.ts.composition.is_composing() {
+		display_text := state.text[..state.ts.composition.preedit_start] +
+			state.ts.composition.preedit_text + state.text[state.ts.composition.preedit_start..]
+		state.layout = state.ts.layout_text(display_text, state.cfg) or { return }
+	} else {
+		state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
+	}
+}
+
+fn get_layout1(data voidptr) &vglyph.Layout {
+	state := unsafe { &EditorState(data) }
+	return &state.layout
+}
+
+fn get_offset1(data voidptr) (f32, f32) {
+	state := unsafe { &EditorState(data) }
+	return f32(50), f32(50) - state.scroll_offset
+}
+
+fn get_cursor_index1(data voidptr) int {
+	state := unsafe { &EditorState(data) }
+	return state.cursor_idx
+}
+
+fn on_commit2(text string, data voidptr) {
+	mut state := unsafe { &EditorState(data) }
+	result := vglyph.insert_text(state.text2, state.cursor_idx2, text)
+	new_layout := state.ts.layout_text(result.new_text, state.cfg2) or { return }
+	mut new_cursor := result.cursor_pos
+	if new_cursor < 0 {
+		new_cursor = 0
+	}
+	if new_cursor > result.new_text.len {
+		new_cursor = result.new_text.len
+	}
+	state.text2 = result.new_text
+	state.layout2 = new_layout
+	state.cursor_idx2 = new_cursor
+}
+
+fn on_update2(data voidptr) {
+	mut state := unsafe { &EditorState(data) }
+	if state.ts.composition.is_composing() {
+		display_text := state.text2[..state.ts.composition.preedit_start] +
+			state.ts.composition.preedit_text + state.text2[state.ts.composition.preedit_start..]
+		state.layout2 = state.ts.layout_text(display_text, state.cfg2) or { return }
+	} else {
+		state.layout2 = state.ts.layout_text(state.text2, state.cfg2) or { return }
+	}
+}
+
+fn get_layout2(data voidptr) &vglyph.Layout {
+	state := unsafe { &EditorState(data) }
+	return &state.layout2
+}
+
+fn get_offset2(data voidptr) (f32, f32) {
+	state := unsafe { &EditorState(data) }
+	return f32(430), f32(50) - state.scroll_offset
+}
+
+fn get_cursor_index2(data voidptr) int {
+	state := unsafe { &EditorState(data) }
+	return state.cursor_idx2
+}
+
 fn init(state_ptr voidptr) {
 	mut state := unsafe { &EditorState(state_ptr) }
 	state.ts = vglyph.new_text_system(mut state.gg_ctx) or { panic(err) }
@@ -150,20 +247,41 @@ fn init(state_ptr voidptr) {
 	}
 	state.layout2 = state.ts.layout_text(state.text2, state.cfg2) or { panic(err) }
 
+	// Initialize IME handlers
+	// Initialize IME handlers
+	state.handler1 = &vglyph.StandardIMEHandler{
+		ts:               state.ts
+		user_data:        state
+		on_commit:        on_commit1
+		on_update:        on_update1
+		get_layout:       get_layout1
+		get_offset:       get_offset1
+		get_cursor_index: get_cursor_index1
+	}
+	state.handler2 = &vglyph.StandardIMEHandler{
+		ts:               state.ts
+		user_data:        state
+		on_commit:        on_commit2
+		on_update:        on_update2
+		get_layout:       get_layout2
+		get_offset:       get_offset2
+		get_cursor_index: get_cursor_index2
+	}
+
 	// Check for --global-ime flag (regression testing)
 	state.use_global_ime = os.args.contains('--global-ime')
 
 	$if macos {
 		if state.use_global_ime {
-			vglyph.ime_register_callbacks(ime_marked_text, ime_insert_text, ime_unmark_text,
-				ime_bounds, state_ptr)
+			vglyph.ime_register_callbacks(vglyph.ime_standard_marked_text, vglyph.ime_standard_insert_text,
+				vglyph.ime_standard_unmark_text, vglyph.ime_standard_bounds, state.handler1)
 			state.ime_initialized = true
 		}
 		// else: defer overlay creation to first frame (window not ready in init)
 	} $else {
 		state.use_global_ime = true
-		vglyph.ime_register_callbacks(ime_marked_text, ime_insert_text, ime_unmark_text,
-			ime_bounds, state_ptr)
+		vglyph.ime_register_callbacks(vglyph.ime_standard_marked_text, vglyph.ime_standard_insert_text,
+			vglyph.ime_standard_unmark_text, vglyph.ime_standard_bounds, state.handler1)
 		state.ime_initialized = true
 	}
 
@@ -210,27 +328,18 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			}
 
 			// Commit composition on click (per CONTEXT.md)
-			if state.composition.is_composing() {
-				committed := state.composition.commit()
+			if state.ts.composition.is_composing() {
+				committed := state.ts.composition.commit()
 				if committed.len > 0 {
-					cursor_before := state.cursor_idx
-					anchor_before := state.anchor_idx
-					result := vglyph.insert_text(state.text, state.cursor_idx, committed)
-					new_layout := state.ts.layout_text(result.new_text, state.cfg) or { return }
-					mut new_cursor := result.cursor_pos
-					if new_cursor < 0 {
-						new_cursor = 0
+					if state.active_field == 1 {
+						on_commit1(committed, state)
+					} else {
+						on_commit2(committed, state)
 					}
-					if new_cursor > result.new_text.len {
-						new_cursor = result.new_text.len
-					}
-					state.text = result.new_text
-					state.layout = new_layout
-					state.cursor_idx = new_cursor
-					state.anchor_idx = new_cursor
-					state.has_selection = false
-					state.undo_mgr.record_mutation(result, committed, cursor_before, anchor_before)
 				}
+				// Re-sync layouts after commit
+				on_update1(state)
+				on_update2(state)
 			}
 
 			mx := e.mouse_x - offset_x
@@ -369,7 +478,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 		.key_down {
 			// Block navigation/editing keys during IME composition
 			// Let the IME handle these (arrows for clause nav, Enter for commit, etc.)
-			if state.composition.is_composing() {
+			if state.ts.composition.is_composing() {
 				match e.key_code {
 					.left, .right, .up, .down, .enter, .backspace, .delete, .tab {
 						// IME should handle these - don't process in editor
@@ -385,15 +494,15 @@ fn event(e &gg.Event, state_ptr voidptr) {
 
 			// Handle Escape for composition/dead key cancellation
 			if e.key_code == .escape {
-				if state.composition.is_composing() {
-					state.composition.reset()
+				if state.ts.composition.is_composing() {
+					state.ts.composition.reset()
 					if state.a11y_enabled {
 						state.a11y_announcer.announce_composition_cancelled()
 					}
 					return
 				}
-				if state.dead_key.has_pending() {
-					state.dead_key.clear()
+				if state.ts.dead_key.has_pending() {
+					state.ts.dead_key.clear()
 					if state.a11y_enabled {
 						state.a11y_announcer.announce_composition_cancelled()
 						state.in_dead_key = false
@@ -405,7 +514,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			// Handle undo/redo FIRST - before other command handling
 			if cmd_held && e.key_code == .z && !shift_held {
 				// Block undo during IME composition (RESEARCH.md Pitfall #3)
-				if state.composition.is_composing() {
+				if state.ts.composition.is_composing() {
 					return
 				}
 				// Cmd+Z: undo
@@ -424,7 +533,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 
 			if cmd_held && e.key_code == .z && shift_held {
 				// Block redo during IME composition (RESEARCH.md Pitfall #3)
-				if state.composition.is_composing() {
+				if state.ts.composition.is_composing() {
 					return
 				}
 				// Cmd+Shift+Z: redo
@@ -447,29 +556,10 @@ fn event(e &gg.Event, state_ptr voidptr) {
 				match e.key_code {
 					.a {
 						// Per RESEARCH.md: Cmd+A during composition commits first, then selects
-						if state.composition.is_composing() {
-							committed := state.composition.commit()
+						if state.ts.composition.is_composing() {
+							committed := state.ts.composition.commit()
 							if committed.len > 0 {
-								cursor_before := state.cursor_idx
-								anchor_before := state.anchor_idx
-								result := vglyph.insert_text(state.text, state.cursor_idx,
-									committed)
-								new_layout := state.ts.layout_text(result.new_text, state.cfg) or {
-									state.skip_char_event = true
-									return
-								}
-								mut new_cursor := result.cursor_pos
-								if new_cursor < 0 {
-									new_cursor = 0
-								}
-								if new_cursor > result.new_text.len {
-									new_cursor = result.new_text.len
-								}
-								state.text = result.new_text
-								state.layout = new_layout
-								state.cursor_idx = new_cursor
-								state.undo_mgr.record_mutation(result, committed, cursor_before,
-									anchor_before)
+								on_commit1(committed, state)
 							}
 						}
 						// Cmd+A: select all
@@ -737,8 +827,8 @@ fn event(e &gg.Event, state_ptr voidptr) {
 						// This differs from focus loss which COMMITS (inserts preedit text)
 						// Cancel = user explicitly wants to discard current composition
 						// Commit = preedit content becomes permanent text
-						if opt_held && state.composition.is_composing() {
-							state.composition.reset()
+						if opt_held && state.ts.composition.is_composing() {
+							state.ts.composition.reset()
 							// Rebuild layout without preedit
 							state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
 							return
@@ -931,7 +1021,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 			}
 
 			// Skip char events during IME composition - IME handles input via callbacks
-			if state.composition.is_composing() {
+			if state.ts.composition.is_composing() {
 				return
 			}
 
@@ -961,34 +1051,10 @@ fn event(e &gg.Event, state_ptr voidptr) {
 				char_rune := rune(e.char_code)
 
 				// Handle dead key combination
-				if state.dead_key.has_pending() {
-					combined, _ := state.dead_key.try_combine(char_rune)
+				if state.ts.dead_key.has_pending() {
+					combined, _ := state.ts.dead_key.try_combine(char_rune)
 					if combined.len > 0 {
-						cursor_before := state.cursor_idx
-						anchor_before := state.anchor_idx
-						mut result := vglyph.MutationResult{}
-						if state.has_selection {
-							result = vglyph.insert_replacing_selection(state.text, state.cursor_idx,
-								state.anchor_idx, combined)
-						} else {
-							result = vglyph.insert_text(state.text, state.cursor_idx,
-								combined)
-						}
-						new_layout := state.ts.layout_text(result.new_text, state.cfg) or { return }
-						mut new_cursor := result.cursor_pos
-						if new_cursor < 0 {
-							new_cursor = 0
-						}
-						if new_cursor > result.new_text.len {
-							new_cursor = result.new_text.len
-						}
-						state.text = result.new_text
-						state.layout = new_layout
-						state.cursor_idx = new_cursor
-						state.anchor_idx = new_cursor
-						state.has_selection = false
-						state.undo_mgr.record_mutation(result, combined, cursor_before,
-							anchor_before)
+						on_commit1(combined, state)
 						// Announce dead key result (per CONTEXT.md)
 						if state.a11y_enabled && state.in_dead_key && combined.len > 0 {
 							state.a11y_announcer.announce_dead_key_result(combined.runes()[0])
@@ -1000,7 +1066,7 @@ fn event(e &gg.Event, state_ptr voidptr) {
 
 				// Check if char is a dead key
 				if vglyph.is_dead_key(char_rune) {
-					state.dead_key.start_dead_key(char_rune, state.cursor_idx)
+					state.ts.dead_key.start_dead_key(char_rune, state.cursor_idx)
 					// Announce dead key (per CONTEXT.md)
 					if state.a11y_enabled {
 						state.a11y_announcer.announce_dead_key(char_rune)
@@ -1142,18 +1208,20 @@ fn frame(state_ptr voidptr) {
 			if state.ime_overlay == unsafe { nil } {
 				eprintln('Warning: overlay creation failed, falling back to global')
 				state.use_global_ime = true
-				vglyph.ime_register_callbacks(ime_marked_text, ime_insert_text, ime_unmark_text,
-					ime_bounds, state_ptr)
+				vglyph.ime_register_callbacks(vglyph.ime_standard_marked_text, vglyph.ime_standard_insert_text,
+					vglyph.ime_standard_unmark_text, vglyph.ime_standard_bounds, state.handler1)
 			} else {
-				vglyph.ime_overlay_register_callbacks(state.ime_overlay, ime_on_marked_text,
-					ime_on_insert_text, ime_on_unmark_text, ime_on_get_bounds, ime_on_clause,
-					ime_on_clauses_begin, ime_on_clauses_end, state_ptr)
+				vglyph.ime_overlay_register_callbacks(state.ime_overlay, vglyph.ime_standard_marked_text,
+					vglyph.ime_standard_insert_text, vglyph.ime_standard_unmark_text,
+					vglyph.ime_standard_bounds, vglyph.ime_standard_clause, vglyph.ime_standard_clauses_begin,
+					vglyph.ime_standard_clauses_end, state.handler1)
 				vglyph.ime_overlay_set_focused_field(state.ime_overlay, 'field1')
 				state.ime_overlay2 = vglyph.ime_overlay_create_auto(ns_window)
 				if state.ime_overlay2 != unsafe { nil } {
-					vglyph.ime_overlay_register_callbacks(state.ime_overlay2, ime_on_marked_text2,
-						ime_on_insert_text2, ime_on_unmark_text2, ime_on_get_bounds2,
-						ime_on_clause2, ime_on_clauses_begin2, ime_on_clauses_end2, state_ptr)
+					vglyph.ime_overlay_register_callbacks(state.ime_overlay2, vglyph.ime_standard_marked_text,
+						vglyph.ime_standard_insert_text, vglyph.ime_standard_unmark_text,
+						vglyph.ime_standard_bounds, vglyph.ime_standard_clause, vglyph.ime_standard_clauses_begin,
+						vglyph.ime_standard_clauses_end, state.handler2)
 				}
 			}
 		}
@@ -1186,15 +1254,10 @@ fn frame(state_ptr voidptr) {
 	}
 
 	// Render the text using the system
-	// When composing, render text with preedit included
-	if state.composition.is_composing() && state.active_field == 1 {
-		display_text := state.text[..state.composition.preedit_start] +
-			state.composition.preedit_text + state.text[state.composition.preedit_start..]
-		state.ts.draw_text(offset_x, offset_y, display_text, state.cfg) or { println(err) }
-		state.ts.draw_composition(state.layout, offset_x, offset_y, &state.composition,
+	state.ts.draw_layout(state.layout, offset_x, offset_y)
+	if state.ts.composition.is_composing() && state.active_field == 1 {
+		state.ts.draw_composition(state.layout, offset_x, offset_y, &state.ts.composition,
 			gg.black)
-	} else {
-		state.ts.draw_text(offset_x, offset_y, state.text, state.cfg) or { println(err) }
 	}
 
 	// Draw Cursor using get_cursor_pos API (visible during composition)
@@ -1219,15 +1282,11 @@ fn frame(state_ptr voidptr) {
 		state.gg_ctx.draw_rect_empty(field2_x - 2, field2_y - 2, 304, 504, gg.Color{100, 150, 255, 255})
 	}
 
-	// Draw field 2 text (with preedit when composing in field 2)
-	if state.composition.is_composing() && state.active_field == 2 {
-		display_text2 := state.text2[..state.composition.preedit_start] +
-			state.composition.preedit_text + state.text2[state.composition.preedit_start..]
-		state.ts.draw_text(field2_x, field2_y, display_text2, state.cfg2) or { println(err) }
-		state.ts.draw_composition(state.layout2, field2_x, field2_y, &state.composition,
+	// Draw field 2 text
+	state.ts.draw_layout(state.layout2, field2_x, field2_y)
+	if state.ts.composition.is_composing() && state.active_field == 2 {
+		state.ts.draw_composition(state.layout2, field2_x, field2_y, &state.ts.composition,
 			gg.Color{60, 60, 60, 255})
-	} else {
-		state.ts.draw_text(field2_x, field2_y, state.text2, state.cfg2) or { println(err) }
 	}
 
 	// Draw field 2 cursor
@@ -1278,258 +1337,4 @@ fn frame(state_ptr voidptr) {
 
 	state.gg_ctx.end()
 	state.ts.commit()
-}
-
-// IME callback functions
-fn ime_marked_text(text &char, cursor_pos int, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-
-	if !state.composition.is_composing() {
-		cursor := if state.active_field == 1 {
-			state.cursor_idx
-		} else {
-			state.cursor_idx2
-		}
-		state.composition.start(cursor)
-	}
-
-	preedit := unsafe { cstring_to_vstring(text) }
-	state.composition.set_marked_text(preedit, cursor_pos)
-
-	// Rebuild layout with preedit — route to active field
-	if state.active_field == 1 {
-		display_text := state.text[..state.composition.preedit_start] + preedit +
-			state.text[state.composition.preedit_start..]
-		state.layout = state.ts.layout_text(display_text, state.cfg) or { return }
-	} else {
-		display_text := state.text2[..state.composition.preedit_start] + preedit +
-			state.text2[state.composition.preedit_start..]
-		state.layout2 = state.ts.layout_text(display_text, state.cfg2) or { return }
-	}
-}
-
-fn ime_insert_text(text &char, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	committed := unsafe { cstring_to_vstring(text) }
-
-	if state.composition.is_composing() {
-		state.composition.reset()
-	}
-
-	if committed.len > 0 {
-		if state.active_field == 1 {
-			cursor_before := state.cursor_idx
-			anchor_before := state.anchor_idx
-			mut result := vglyph.MutationResult{}
-			if state.has_selection {
-				result = vglyph.insert_replacing_selection(state.text, state.cursor_idx,
-					state.anchor_idx, committed)
-			} else {
-				result = vglyph.insert_text(state.text, state.cursor_idx, committed)
-			}
-			new_layout := state.ts.layout_text(result.new_text, state.cfg) or { return }
-			mut new_cursor := result.cursor_pos
-			if new_cursor < 0 {
-				new_cursor = 0
-			}
-			if new_cursor > result.new_text.len {
-				new_cursor = result.new_text.len
-			}
-			state.text = result.new_text
-			state.layout = new_layout
-			state.cursor_idx = new_cursor
-			state.anchor_idx = new_cursor
-			state.has_selection = false
-			state.undo_mgr.record_mutation(result, committed, cursor_before, anchor_before)
-		} else {
-			result := vglyph.insert_text(state.text2, state.cursor_idx2, committed)
-			new_layout := state.ts.layout_text(result.new_text, state.cfg2) or { return }
-			mut new_cursor := result.cursor_pos
-			if new_cursor < 0 {
-				new_cursor = 0
-			}
-			if new_cursor > result.new_text.len {
-				new_cursor = result.new_text.len
-			}
-			state.text2 = result.new_text
-			state.layout2 = new_layout
-			state.cursor_idx2 = new_cursor
-		}
-	}
-}
-
-fn ime_unmark_text(user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.reset()
-	// Restore layout without preedit — route to active field
-	if state.active_field == 1 {
-		state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
-	} else {
-		state.layout2 = state.ts.layout_text(state.text2, state.cfg2) or { return }
-	}
-}
-
-fn ime_bounds(user_data voidptr, x &f32, y &f32, width &f32, height &f32) bool {
-	state := unsafe { &EditorState(user_data) }
-	layout := if state.active_field == 1 { state.layout } else { state.layout2 }
-	if rect := state.composition.get_composition_bounds(layout) {
-		base_x := if state.active_field == 1 { f32(50) } else { f32(430) }
-		base_y := f32(50) - state.scroll_offset
-		unsafe {
-			*x = base_x + rect.x
-			*y = base_y + rect.y
-			*width = rect.width
-			*height = rect.height
-		}
-		return true
-	}
-	return false
-}
-
-// IME overlay callback functions (for per-overlay API with clause support)
-// These use the new handler methods in CompositionState
-
-fn ime_on_marked_text(text &char, cursor_pos int, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	text_str := unsafe { cstring_to_vstring(text) }
-	state.composition.handle_marked_text(text_str, cursor_pos, state.cursor_idx)
-	// Rebuild layout to include preedit text
-	state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
-}
-
-fn ime_on_insert_text(text &char, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	text_str := unsafe { cstring_to_vstring(text) }
-	committed := state.composition.handle_insert_text(text_str)
-	if committed.len > 0 {
-		cursor_before := state.cursor_idx
-		anchor_before := state.anchor_idx
-
-		mut result := vglyph.MutationResult{}
-		if state.has_selection {
-			result = vglyph.insert_replacing_selection(state.text, state.cursor_idx, state.anchor_idx,
-				committed)
-		} else {
-			result = vglyph.insert_text(state.text, state.cursor_idx, committed)
-		}
-
-		new_layout := state.ts.layout_text(result.new_text, state.cfg) or { return }
-		mut new_cursor := result.cursor_pos
-		if new_cursor < 0 {
-			new_cursor = 0
-		}
-		if new_cursor > result.new_text.len {
-			new_cursor = result.new_text.len
-		}
-
-		state.text = result.new_text
-		state.layout = new_layout
-		state.cursor_idx = new_cursor
-		state.anchor_idx = new_cursor
-		state.has_selection = false
-		state.undo_mgr.record_mutation(result, committed, cursor_before, anchor_before)
-	}
-}
-
-fn ime_on_unmark_text(user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.handle_unmark_text()
-	// Rebuild layout without preedit
-	state.layout = state.ts.layout_text(state.text, state.cfg) or { return }
-}
-
-fn ime_on_get_bounds(user_data voidptr, x &f32, y &f32, w &f32, h &f32) bool {
-	state := unsafe { &EditorState(user_data) }
-	if rect := state.composition.get_composition_bounds(state.layout) {
-		offset_x := f32(50)
-		offset_y := f32(50) - state.scroll_offset
-		unsafe {
-			*x = offset_x + rect.x
-			*y = offset_y + rect.y
-			*w = rect.width
-			*h = rect.height
-		}
-		return true
-	}
-	return false
-}
-
-fn ime_on_clauses_begin(user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.clear_clauses()
-}
-
-fn ime_on_clause(start int, length int, style int, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.handle_clause(start, length, style)
-}
-
-fn ime_on_clauses_end(user_data voidptr) {
-	// No action needed - clauses already accumulated
-}
-
-// Field 2 IME callbacks (operate on text2/cursor_idx2/layout2)
-fn ime_on_marked_text2(text &char, cursor_pos int, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	text_str := unsafe { cstring_to_vstring(text) }
-	state.composition.handle_marked_text(text_str, cursor_pos, state.cursor_idx2)
-	// Rebuild layout to include preedit text
-	state.layout2 = state.ts.layout_text(state.text2, state.cfg2) or { return }
-}
-
-fn ime_on_insert_text2(text &char, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	text_str := unsafe { cstring_to_vstring(text) }
-	committed := state.composition.handle_insert_text(text_str)
-	if committed.len > 0 {
-		result := vglyph.insert_text(state.text2, state.cursor_idx2, committed)
-		new_layout := state.ts.layout_text(result.new_text, state.cfg2) or { return }
-		mut new_cursor := result.cursor_pos
-		if new_cursor < 0 {
-			new_cursor = 0
-		}
-		if new_cursor > result.new_text.len {
-			new_cursor = result.new_text.len
-		}
-		state.text2 = result.new_text
-		state.layout2 = new_layout
-		state.cursor_idx2 = new_cursor
-	}
-}
-
-fn ime_on_unmark_text2(user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.handle_unmark_text()
-	// Rebuild layout without preedit
-	state.layout2 = state.ts.layout_text(state.text2, state.cfg2) or { return }
-}
-
-fn ime_on_get_bounds2(user_data voidptr, x &f32, y &f32, w &f32, h &f32) bool {
-	state := unsafe { &EditorState(user_data) }
-	if rect := state.composition.get_composition_bounds(state.layout2) {
-		field2_x := f32(430)
-		field2_y := f32(50) - state.scroll_offset
-		unsafe {
-			*x = field2_x + rect.x
-			*y = field2_y + rect.y
-			*w = rect.width
-			*h = rect.height
-		}
-		return true
-	}
-	return false
-}
-
-fn ime_on_clauses_begin2(user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.clear_clauses()
-}
-
-fn ime_on_clause2(start int, length int, style int, user_data voidptr) {
-	mut state := unsafe { &EditorState(user_data) }
-	state.composition.handle_clause(start, length, style)
-}
-
-fn ime_on_clauses_end2(user_data voidptr) {
-	// No action needed - clauses already accumulated
 }
