@@ -9,198 +9,68 @@ See: .planning/PROJECT.md (updated 2026-02-05)
 
 ## Current Position
 
+Phase: 40 of 40 (IME API Refinement)
 
+Plan: 02 of 03
 
-Phase: 39 of 39 (IME Polish)
+Status: In progress
 
+Last activity: 2026-02-06 — Completed 40-01-PLAN.md (Refactored TextSystem for IME state)
 
-
-Plan: 02 of 02
-
-
-
-Status: Phase complete
-
-
-
-Last activity: 2026-02-06 — Completed 39-02-PLAN.md
-
-
-
-
-
-
-
-Progress: ████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████░░░░░ 94%
-
-
-
-
-
-
+Progress: ██████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████░░░ 96%
 
 ## Performance Metrics
 
-
-
 **Velocity:**
-
 - Total phases completed: 36 (35 executed, 1 skipped)
-
 - Total milestones shipped: 9
-
-
 
 **By Milestone:**
 
-
-
 | Milestone | Phases | Status |
-
 |-----------|--------|--------|
-
 | v1.0 Memory Safety | 3 | Complete |
-
 | v1.1 Fragile Hardening | 4 | Complete |
-
 | v1.2 Performance v1 | 3 | Complete |
-
 | v1.3 Text Editing | 7 | Complete |
-
 | v1.4 CJK IME | 4 | Complete (partial Korean) |
-
 | v1.5 Quality Audit | 4 | Complete |
-
 | v1.6 Performance v2 | 4 | Complete (P29 skipped) |
-
 | v1.7 Stabilization | 3 | Complete |
-
 | v1.8 Overlay API | 2 | Complete |
-
 | Pango RAII Refactor | 1 | Complete |
-
 | Integration Testing | 1 | Complete |
-
 | Layout Cache Optimization | 1 | Complete (P37) |
-
 | macOS Accessibility Tree | 1 | In Progress (P38) |
-
-
+| IME API Refinement | 1 | In Progress (P40) |
 
 ## Accumulated Context
 
-
-
 ### Decisions
 
-
-
 See PROJECT.md Key Decisions table for full history.
-
 - **[2026-02-05] use-real-pango-in-tests**: Confirmed real Pango/FreeType backend works in headless test environment.
-
 - **[2026-02-05] use-real-context-in-api-tests**: Replaced unsafe { nil } mocks with real Context in _api_test.v.
-
 - **[2026-02-06] layout-cache-metrics**: Used layout_cache_size and layout_cache_evictions for consistency with glyph cache metrics.
-
 - **[2026-02-06] accessibility-coordinate-conversion**: Implemented top-left to bottom-left screen coordinate conversion for NSAccessibilityElement frames.
-
-
-
 - **[2026-02-06] use-nsvalue-helper**: Added a C helper in objc_helpers.h to safely wrap NSRange in NSValue, avoiding complex msgSend signatures for struct arguments in V.
-
-
-
-
-
-
-
 - **[2026-02-06] use-reset-method**: Standardized on .reset() for both CompositionState and DeadKeyState for consistency.
-
-
-
-
-
-
-
 - **[2026-02-06] ime-input-validation**: Enforced validate_text_input on all incoming strings from IME to prevent DoS or malformed UTF-8 issues.
-
-
-
-
-
-
-
 - **[2026-02-06] unified-coordinate-flip**: Standardized the top-left to bottom-left Y-flip logic and documentation across all native macOS IME bridges.
-
-
-
-
-
-
-
-
-
-
-
 - **[2026-02-06] defensive-ime-callbacks**: Added nil checks for incoming IME strings and bounds validation for cursor positions to prevent crashes from malformed OS events.
-
-
-
-
-
-
+- **[2026-02-06] textsystem-ime-ownership**: Moved CompositionState and DeadKeyState into TextSystem to centralize IME state management.
 
 ### Pending Todos
 
-
-
-
-
-
-
 None.
-
-
 
 ### Known Issues
 
-
-
 **Korean IME first-keypress** - macOS-level bug, reported upstream (Qt QTBUG-136128, Apple FB17460926, Alacritty #6942).
-
-
 
 ## Session Continuity
 
-
-
-
-
-
-
 Last session: 2026-02-06
 
-
-
-
-
-
-
-Stopped at: Completed 39-02-PLAN.md
-
-
-
-
-
-
-
-Resume file: None
-
-
-
-
-
-
-
-
+Stopped at: Completed 40-01-PLAN.md
+Resume file: .planning/phases/40-ime-refinement/40-02-PLAN.md
