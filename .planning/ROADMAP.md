@@ -28,8 +28,15 @@ Refactor manual memory management of Pango pointers into V structs with RAII-lik
 
 ### Phase 38: macOS Accessibility Completion
 **Goal:** Complete `DarwinAccessibilityBackend` to enable VoiceOver support (tree building, properties, interaction).
+**Status:** [In Progress]
+**Plans:**
+- [x] 38-01-PLAN.md — Core Tree Implementation
+- [x] 38-02-PLAN.md — Interaction & Text Support
+- [ ] 38-03-PLAN.md — Verification
+
+### Phase 39: IME Quality and Security Polish
+**Goal:** Improve consistency, security, and quality of recently added IME code.
 **Status:** [Planned]
 **Plans:**
-- [ ] 38-01-PLAN.md — Core Tree Implementation
-- [ ] 38-02-PLAN.md — Interaction & Text Support
-- [ ] 38-03-PLAN.md — Verification
+- [ ] 39-01-PLAN.md — V-side Polish
+- [ ] 39-02-PLAN.md — macOS Native Polish
