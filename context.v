@@ -67,6 +67,8 @@ $if profile ? {
 		glyph_cache_evictions int
 		layout_cache_hits     int
 		layout_cache_misses   int
+		layout_cache_evictions int
+		layout_cache_size      int
 		// Note: metrics_cache_hits/misses added in Phase 9 when metrics cache implemented
 
 		// Atlas statistics (INST-05)
@@ -125,7 +127,8 @@ $if profile ? {
 		util := m.atlas_utilization()
 		println('Glyph Cache: ${rate1:.1}% (${m.glyph_cache_hits}/${glyph_total}), ' +
 			'${m.glyph_cache_evictions} evictions')
-		println('Layout Cache: ${rate2:.1}% (${m.layout_cache_hits}/${layout_total})')
+		println('Layout Cache: ${rate2:.1}% (${m.layout_cache_hits}/${layout_total}), ' +
+			'${m.layout_cache_evictions} evictions, size ${m.layout_cache_size}')
 		println('Atlas: ${m.atlas_page_count} pages, ${util:.1}% utilized ' +
 			'(${m.atlas_used_pixels}/${m.atlas_total_pixels} px)')
 		cur_kb := m.current_atlas_bytes / 1024
@@ -214,11 +217,11 @@ pub fn new_context(scale_factor f32) !&Context {
 		pango_font_map: PangoFontMap{
 			ptr: pango_font_map
 		}
-		pango_context: PangoContext{
+		pango_context:  PangoContext{
 			ptr: pango_context
 		}
-		scale_factor: safe_scale
-		scale_inv:    1.0 / safe_scale
+		scale_factor:   safe_scale
+		scale_inv:      1.0 / safe_scale
 	}
 }
 
