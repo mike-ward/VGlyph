@@ -11,10 +11,10 @@ const window_height = 600
 
 struct App {
 mut:
-	ts            &vglyph.TextSystem = unsafe { nil }
-	gg            &gg.Context        = unsafe { nil }
-	field_value   string = 'Type here...'
-	has_focus     bool
+	ts          &vglyph.TextSystem = unsafe { nil }
+	gg          &gg.Context        = unsafe { nil }
+	field_value string             = 'Type here...'
+	has_focus   bool
 }
 
 fn main() {
@@ -59,10 +59,12 @@ fn frame(mut app App) {
 
 	// 2. Simulated Text Field (Manual via AccessibilityManager)
 	field_rect := gg.Rect{50, 100, 300, 40}
-	app.gg.draw_rect_empty(field_rect.x, field_rect.y, field_rect.width, field_rect.height, gg.black)
+	app.gg.draw_rect_empty(field_rect.x, field_rect.y, field_rect.width, field_rect.height,
+		gg.black)
 
 	if app.has_focus {
-		app.gg.draw_rect_empty(field_rect.x - 2, field_rect.y - 2, field_rect.width + 4, field_rect.height + 4, gg.blue)
+		app.gg.draw_rect_empty(field_rect.x - 2, field_rect.y - 2, field_rect.width + 4,
+			field_rect.height + 4, gg.blue)
 	}
 
 	app.ts.draw_text(55, 110, app.field_value, vglyph.TextConfig{
@@ -75,7 +77,8 @@ fn frame(mut app App) {
 	// Manual accessibility registration for the text field
 	mut am := app.ts.accessibility_manager()
 	field_id := am.create_text_field_node(field_rect)
-	am.update_text_field(field_id, app.field_value, accessibility.Range{0, app.field_value.len}, 0)
+	am.update_text_field(field_id, app.field_value, accessibility.Range{0, app.field_value.len},
+		0)
 
 	if app.has_focus {
 		am.set_focus(field_id)

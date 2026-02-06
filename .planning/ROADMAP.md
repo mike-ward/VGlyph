@@ -25,3 +25,11 @@ Refactor manual memory management of Pango pointers into V structs with RAII-lik
 **Plans:**
 - [ ] 37-01-PLAN.md — Layout Cache Telemetry
 - [ ] 37-02-PLAN.md — Layout Cache Optimization
+
+### Phase 38: macOS Accessibility Completion
+**Goal:** Complete `DarwinAccessibilityBackend` to enable VoiceOver support (tree building, properties, interaction).
+**Status:** [Planned]
+**Plans:**
+- [ ] 38-01-PLAN.md — Core Tree Implementation
+- [ ] 38-02-PLAN.md — Interaction & Text Support
+- [ ] 38-03-PLAN.md — Verification
