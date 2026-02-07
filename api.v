@@ -23,8 +23,8 @@ mut:
 	ctx      &Context
 	renderer &Renderer
 	cache    map[u64]&CachedLayout
-	// Cache pruning only activates when cache exceeds 10,000 entries.
-	// Items older than eviction_age (milliseconds) are then removed.
+	// Items older than eviction_age (milliseconds) are evicted
+	// each frame during commit().
 	eviction_age          i64 = 5000 // ms
 	am                    &accessibility.AccessibilityManager
 	accessibility_enabled bool
@@ -716,11 +716,10 @@ fn (mut ts TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 }
 
 fn (mut ts TextSystem) prune_cache() {
-	now := time.ticks()
-
-	if ts.cache.len < 10_000 {
+	if ts.cache.len == 0 {
 		return
 	}
+	now := time.ticks()
 
 	// Mark-and-sweep: collect keys to delete first, then delete
 	mut to_delete := []u64{cap: ts.cache.len / 4}
