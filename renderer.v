@@ -446,7 +446,6 @@ fn lerp_color(a gg.Color, b gg.Color, t f32) gg.Color {
 }
 
 // gradient_color_at samples the gradient at normalized position t.
-@[inline]
 fn gradient_color_at(stops []GradientStop, t f32) gg.Color {
 	if stops.len == 0 {
 		return gg.Color{0, 0, 0, 255}
@@ -468,6 +467,53 @@ fn gradient_color_at(stops []GradientStop, t f32) gg.Color {
 		}
 	}
 	return stops[stops.len - 1].color
+}
+
+// emit_decoration_quad emits an untextured quad with optional gradient.
+// Used for underline/strikethrough decorations.
+fn emit_decoration_quad(transform AffineTransform, ox f32, oy f32, lx f32, ly f32,
+	lw f32, lh f32, color gg.Color, use_gradient bool, gradient &GradientConfig,
+	grad_w f32, grad_h f32) {
+	x0, y0 := transform_layout_point(transform, ox, oy, lx, ly)
+	x1, y1 := transform_layout_point(transform, ox, oy, lx + lw, ly)
+	x2, y2 := transform_layout_point(transform, ox, oy, lx + lw, ly + lh)
+	x3, y3 := transform_layout_point(transform, ox, oy, lx, ly + lh)
+
+	if use_gradient && gradient != unsafe { nil } {
+		if gradient.direction == .horizontal {
+			t_left := lx / grad_w
+			t_right := (lx + lw) / grad_w
+			c_left := gradient_color_at(gradient.stops, t_left)
+			c_right := gradient_color_at(gradient.stops, t_right)
+			sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
+			sgl.v2f(x0, y0)
+			sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
+			sgl.v2f(x1, y1)
+			sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
+			sgl.v2f(x2, y2)
+			sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
+			sgl.v2f(x3, y3)
+		} else {
+			t_top := ly / grad_h
+			t_bottom := (ly + lh) / grad_h
+			c_top := gradient_color_at(gradient.stops, t_top)
+			c_bottom := gradient_color_at(gradient.stops, t_bottom)
+			sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
+			sgl.v2f(x0, y0)
+			sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
+			sgl.v2f(x1, y1)
+			sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
+			sgl.v2f(x2, y2)
+			sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
+			sgl.v2f(x3, y3)
+		}
+	} else {
+		sgl.c4b(color.r, color.g, color.b, color.a)
+		sgl.v2f(x0, y0)
+		sgl.v2f(x1, y1)
+		sgl.v2f(x2, y2)
+		sgl.v2f(x3, y3)
+	}
 }
 
 // draw_layout_rotated draws the layout rotated by `angle` (in radians) around its origin.
@@ -516,14 +562,28 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 
 	has_gradient := gradient != unsafe { nil } && gradient.stops.len > 0
 
-	// Pre-compute gradient extents
-	grad_w := if has_gradient && layout.visual_width > 0 {
+	$if debug {
+		if has_gradient {
+			for i := 0; i < gradient.stops.len - 1; i++ {
+				if gradient.stops[i].position > gradient.stops[i + 1].position {
+					panic('GradientConfig.stops must be sorted by position')
+				}
+			}
+		}
+	}
+
+	// Pre-compute gradient extents (logical coords to match item.x/item.y)
+	grad_w := if has_gradient && layout.width > 0 {
+		layout.width
+	} else if has_gradient && layout.visual_width > 0 {
 		layout.visual_width
 	} else {
 		f32(1.0)
 	}
 	grad_h := if has_gradient && layout.height > 0 {
 		layout.height
+	} else if has_gradient && layout.visual_height > 0 {
+		layout.visual_height
 	} else {
 		f32(1.0)
 	}
@@ -594,7 +654,9 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 				gx := cx + f32(glyph.x_offset)
 				gy := cy - f32(glyph.y_offset)
 
-				// Bin 0 for transformed path
+				// Bin 0 for transformed path.
+				// Intentional error suppression: missing glyph renders
+				// as blank space (CachedGlyph has width=0, height=0).
 				cg := renderer.get_or_load_glyph(item, glyph, 0) or { CachedGlyph{} }
 
 				if cg.page >= 0 && cg.page < renderer.atlas.pages.len {
@@ -693,46 +755,9 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 				line_w := f32(item.width)
 				line_h := f32(item.underline_thickness)
 
-				x0, y0 := transform_layout_point(transform, x, y, line_x, line_y)
-				x1, y1 := transform_layout_point(transform, x, y, line_x + line_w, line_y)
-				x2, y2 := transform_layout_point(transform, x, y, line_x + line_w, line_y + line_h)
-				x3, y3 := transform_layout_point(transform, x, y, line_x, line_y + line_h)
-
-				if has_gradient && !item.use_original_color {
-					if gradient.direction == .horizontal {
-						t_left := line_x / grad_w
-						t_right := (line_x + line_w) / grad_w
-						c_left := gradient_color_at(gradient.stops, t_left)
-						c_right := gradient_color_at(gradient.stops, t_right)
-						sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
-						sgl.v2f(x0, y0)
-						sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
-						sgl.v2f(x1, y1)
-						sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
-						sgl.v2f(x2, y2)
-						sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
-						sgl.v2f(x3, y3)
-					} else {
-						t_top := line_y / grad_h
-						t_bottom := (line_y + line_h) / grad_h
-						c_top := gradient_color_at(gradient.stops, t_top)
-						c_bottom := gradient_color_at(gradient.stops, t_bottom)
-						sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
-						sgl.v2f(x0, y0)
-						sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
-						sgl.v2f(x1, y1)
-						sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
-						sgl.v2f(x2, y2)
-						sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
-						sgl.v2f(x3, y3)
-					}
-				} else {
-					sgl.c4b(item.color.r, item.color.g, item.color.b, item.color.a)
-					sgl.v2f(x0, y0)
-					sgl.v2f(x1, y1)
-					sgl.v2f(x2, y2)
-					sgl.v2f(x3, y3)
-				}
+				emit_decoration_quad(transform, x, y, line_x, line_y, line_w, line_h,
+					item.color, has_gradient && !item.use_original_color, gradient, grad_w,
+					grad_h)
 			}
 
 			if item.has_strikethrough {
@@ -741,46 +766,9 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 				line_w := f32(item.width)
 				line_h := f32(item.strikethrough_thickness)
 
-				x0, y0 := transform_layout_point(transform, x, y, line_x, line_y)
-				x1, y1 := transform_layout_point(transform, x, y, line_x + line_w, line_y)
-				x2, y2 := transform_layout_point(transform, x, y, line_x + line_w, line_y + line_h)
-				x3, y3 := transform_layout_point(transform, x, y, line_x, line_y + line_h)
-
-				if has_gradient && !item.use_original_color {
-					if gradient.direction == .horizontal {
-						t_left := line_x / grad_w
-						t_right := (line_x + line_w) / grad_w
-						c_left := gradient_color_at(gradient.stops, t_left)
-						c_right := gradient_color_at(gradient.stops, t_right)
-						sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
-						sgl.v2f(x0, y0)
-						sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
-						sgl.v2f(x1, y1)
-						sgl.c4b(c_right.r, c_right.g, c_right.b, c_right.a)
-						sgl.v2f(x2, y2)
-						sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
-						sgl.v2f(x3, y3)
-					} else {
-						t_top := line_y / grad_h
-						t_bottom := (line_y + line_h) / grad_h
-						c_top := gradient_color_at(gradient.stops, t_top)
-						c_bottom := gradient_color_at(gradient.stops, t_bottom)
-						sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
-						sgl.v2f(x0, y0)
-						sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
-						sgl.v2f(x1, y1)
-						sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
-						sgl.v2f(x2, y2)
-						sgl.c4b(c_bottom.r, c_bottom.g, c_bottom.b, c_bottom.a)
-						sgl.v2f(x3, y3)
-					}
-				} else {
-					sgl.c4b(item.color.r, item.color.g, item.color.b, item.color.a)
-					sgl.v2f(x0, y0)
-					sgl.v2f(x1, y1)
-					sgl.v2f(x2, y2)
-					sgl.v2f(x3, y3)
-				}
+				emit_decoration_quad(transform, x, y, line_x, line_y, line_w, line_h,
+					item.color, has_gradient && !item.use_original_color, gradient, grad_w,
+					grad_h)
 			}
 		}
 	}

@@ -137,6 +137,7 @@ pub:
 }
 
 // GradientConfig defines an N-stop gradient for text rendering.
+// Stops must be sorted by position in ascending order.
 pub struct GradientConfig {
 pub:
 	stops     []GradientStop

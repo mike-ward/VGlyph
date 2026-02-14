@@ -359,6 +359,9 @@ pub fn (mut ts TextSystem) draw_layout_with_gradient(l Layout, x f32, y f32,
 		return
 	}
 	ts.renderer.draw_layout_with_gradient(l, x, y, gradient)
+	if ts.accessibility_enabled {
+		update_accessibility(mut ts.am, l, x, y)
+	}
 }
 
 // draw_layout_transformed_with_gradient renders with both transform and gradient.
@@ -368,6 +371,9 @@ pub fn (mut ts TextSystem) draw_layout_transformed_with_gradient(l Layout, x f32
 		return
 	}
 	ts.renderer.draw_layout_transformed_with_gradient(l, x, y, transform, gradient)
+	if ts.accessibility_enabled {
+		update_accessibility(mut ts.am, l, x, y)
+	}
 }
 
 // draw_layout_rotated_with_gradient renders rotated with gradient colors.
@@ -377,6 +383,9 @@ pub fn (mut ts TextSystem) draw_layout_rotated_with_gradient(l Layout, x f32, y 
 		return
 	}
 	ts.renderer.draw_layout_rotated_with_gradient(l, x, y, angle, gradient)
+	if ts.accessibility_enabled {
+		update_accessibility(mut ts.am, l, x, y)
+	}
 }
 
 // draw_composition renders IME preedit visual feedback (clause underlines and cursor).
@@ -684,6 +693,9 @@ fn fnv_hash_color(h u64, c gg.Color) u64 {
 	return fnv_hash_u64(h, u64(color_u32))
 }
 
+// get_cache_key hashes text + config into a cache key.
+// Gradient is intentionally excluded: it only affects rendering
+// color, not glyph positions or line breaks.
 fn (mut ts TextSystem) get_cache_key(text string, cfg &TextConfig) u64 {
 	mut hash := fnv_offset_basis
 
