@@ -473,7 +473,7 @@ fn gradient_color_at(stops []GradientStop, t f32) gg.Color {
 // Used for underline/strikethrough decorations.
 fn emit_decoration_quad(transform AffineTransform, ox f32, oy f32, lx f32, ly f32,
 	lw f32, lh f32, color gg.Color, use_gradient bool, gradient &GradientConfig,
-	grad_w f32, grad_h f32) {
+	grad_w f32, grad_h f32, grad_x_off f32, grad_y_off f32) {
 	x0, y0 := transform_layout_point(transform, ox, oy, lx, ly)
 	x1, y1 := transform_layout_point(transform, ox, oy, lx + lw, ly)
 	x2, y2 := transform_layout_point(transform, ox, oy, lx + lw, ly + lh)
@@ -481,8 +481,8 @@ fn emit_decoration_quad(transform AffineTransform, ox f32, oy f32, lx f32, ly f3
 
 	if use_gradient && gradient != unsafe { nil } {
 		if gradient.direction == .horizontal {
-			t_left := lx / grad_w
-			t_right := (lx + lw) / grad_w
+			t_left := (lx - grad_x_off) / grad_w
+			t_right := (lx + lw - grad_x_off) / grad_w
 			c_left := gradient_color_at(gradient.stops, t_left)
 			c_right := gradient_color_at(gradient.stops, t_right)
 			sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
@@ -494,8 +494,8 @@ fn emit_decoration_quad(transform AffineTransform, ox f32, oy f32, lx f32, ly f3
 			sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
 			sgl.v2f(x3, y3)
 		} else {
-			t_top := ly / grad_h
-			t_bottom := (ly + lh) / grad_h
+			t_top := (ly - grad_y_off) / grad_h
+			t_bottom := (ly + lh - grad_y_off) / grad_h
 			c_top := gradient_color_at(gradient.stops, t_top)
 			c_bottom := gradient_color_at(gradient.stops, t_bottom)
 			sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
@@ -572,20 +572,34 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 		}
 	}
 
-	// Pre-compute gradient extents (logical coords to match item.x/item.y)
-	grad_w := if has_gradient && layout.width > 0 {
-		layout.width
-	} else if has_gradient && layout.visual_width > 0 {
+	// Pre-compute gradient extents from ink bounds.
+	// Scan items to find the ink origin offset so aligned text
+	// (center/right) normalizes correctly.
+	mut grad_x_off := f32(0)
+	mut grad_y_off := f32(0)
+	grad_w := if has_gradient && layout.visual_width > 0 {
 		layout.visual_width
 	} else {
 		f32(1.0)
 	}
-	grad_h := if has_gradient && layout.height > 0 {
-		layout.height
-	} else if has_gradient && layout.visual_height > 0 {
+	grad_h := if has_gradient && layout.visual_height > 0 {
 		layout.visual_height
 	} else {
 		f32(1.0)
+	}
+	if has_gradient && layout.items.len > 0 {
+		grad_x_off = f32(layout.items[0].x)
+		grad_y_off = f32(layout.items[0].y) - f32(layout.items[0].ascent)
+		for item in layout.items {
+			ix := f32(item.x)
+			iy := f32(item.y) - f32(item.ascent)
+			if ix < grad_x_off {
+				grad_x_off = ix
+			}
+			if iy < grad_y_off {
+				grad_y_off = iy
+			}
+		}
 	}
 
 	sgl.matrix_mode_projection()
@@ -700,8 +714,8 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 					if has_gradient && !item.use_original_color {
 						// Per-vertex gradient colors
 						if gradient.direction == .horizontal {
-							t_left := dst_x / grad_w
-							t_right := (dst_x + dst_w) / grad_w
+							t_left := (dst_x - grad_x_off) / grad_w
+							t_right := (dst_x + dst_w - grad_x_off) / grad_w
 							c_left := gradient_color_at(gradient.stops, t_left)
 							c_right := gradient_color_at(gradient.stops, t_right)
 							sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
@@ -713,8 +727,8 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 							sgl.c4b(c_left.r, c_left.g, c_left.b, c_left.a)
 							sgl.v2f_t2f(x3, y3, u0, v1)
 						} else {
-							t_top := dst_y / grad_h
-							t_bottom := (dst_y + dst_h) / grad_h
+							t_top := (dst_y - grad_y_off) / grad_h
+							t_bottom := (dst_y + dst_h - grad_y_off) / grad_h
 							c_top := gradient_color_at(gradient.stops, t_top)
 							c_bottom := gradient_color_at(gradient.stops, t_bottom)
 							sgl.c4b(c_top.r, c_top.g, c_top.b, c_top.a)
@@ -757,7 +771,7 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 
 				emit_decoration_quad(transform, x, y, line_x, line_y, line_w, line_h,
 					item.color, has_gradient && !item.use_original_color, gradient, grad_w,
-					grad_h)
+					grad_h, grad_x_off, grad_y_off)
 			}
 
 			if item.has_strikethrough {
@@ -768,7 +782,7 @@ fn (mut renderer Renderer) draw_layout_impl(layout Layout, x f32, y f32,
 
 				emit_decoration_quad(transform, x, y, line_x, line_y, line_w, line_h,
 					item.color, has_gradient && !item.use_original_color, gradient, grad_w,
-					grad_h)
+					grad_h, grad_x_off, grad_y_off)
 			}
 		}
 	}

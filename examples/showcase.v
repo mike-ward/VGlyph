@@ -30,6 +30,28 @@ const color_divider = gg.Color{60, 60, 80, 255}
 const color_code_bg = gg.Color{30, 30, 35, 255}
 const color_code_border = gg.Color{60, 60, 70, 255}
 
+// 4-stop gradient for hero title
+const title_gradient = &vglyph.GradientConfig{
+	stops: [
+		vglyph.GradientStop{
+			color:    gg.Color{100, 150, 255, 255}
+			position: 0.0
+		},
+		vglyph.GradientStop{
+			color:    gg.Color{100, 255, 200, 255}
+			position: 0.33
+		},
+		vglyph.GradientStop{
+			color:    gg.Color{200, 150, 255, 255}
+			position: 0.66
+		},
+		vglyph.GradientStop{
+			color:    gg.Color{255, 200, 100, 255}
+			position: 1.0
+		},
+	]
+}
+
 // Layout Constants
 const layout_padding_x = f32(50.0)
 const section_divider_height = f32(2.0)
@@ -39,6 +61,7 @@ const item_spacing = f32(20.0)
 
 enum SectionKind {
 	standard
+	intro
 	subpixel
 	interactive
 	rotation
@@ -147,15 +170,14 @@ fn (mut app ShowcaseApp) create_intro_section(width f32) {
 	// Section 1: Introduction
 	// =========================================================================
 	mut section := ShowcaseSection{
+		kind:        .intro
 		description: 'High-performance, beautiful text rendering for V.'
 	}
 
-	// Large Hero Text
-	// We use a large font size and bold weight for impact.
+	// Large Hero Text with gradient
 	section.layouts << app.ts.layout_text('VGlyph', vglyph.TextConfig{
 		style: vglyph.TextStyle{
 			font_name: 'Sans Bold 80'
-			color:     color_primary
 		}
 		block: vglyph.BlockStyle{
 			align: .center
@@ -1117,6 +1139,9 @@ fn frame(mut app ShowcaseApp) {
 		}
 
 		match section.kind {
+			.intro {
+				current_y = app.draw_intro_section(section, current_y)
+			}
 			.subpixel {
 				current_y = app.draw_subpixel_demo(section, current_y)
 			}
@@ -1236,6 +1261,26 @@ fn (mut app ShowcaseApp) handle_scrolling(e &gg.Event) {
 	if app.scroll_y > app.max_scroll {
 		app.scroll_y = app.max_scroll
 	}
+}
+
+fn (mut app ShowcaseApp) draw_intro_section(section ShowcaseSection, y f32) f32 {
+	mut current_y := y
+	max_visible_h := f32(app.window_h)
+
+	for i, layout in section.layouts {
+		layout_h := layout.visual_height
+		if current_y + layout_h > -100 && current_y < max_visible_h {
+			if i == 0 {
+				// Title with gradient
+				app.ts.draw_layout_with_gradient(layout, layout_padding_x, current_y,
+					title_gradient)
+			} else {
+				app.ts.draw_layout(layout, layout_padding_x, current_y)
+			}
+		}
+		current_y += layout_h + item_spacing
+	}
+	return current_y
 }
 
 fn (mut app ShowcaseApp) draw_subpixel_demo(section ShowcaseSection, y f32) f32 {
